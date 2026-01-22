@@ -1,0 +1,38 @@
+# Visual Studio
+.vscode/
+
+
+# Claude output
+.claude/
+CLAUDE.md
+# Python virtual environments
+pytorch_env/
+venv/
+.venv/
+Scripts/
+share/
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+
+# PyTorch/ML training artifacts
+*.pt
+*.pth
+checkpoints/
+runs/
+wandb/
+.tensorboard/
+experiment_results/
+*.onnx
+
+# Output data (crawler results)
+output/
+# ONNX Runtime libraries (download locally)
+Include/
+Lib/
+
