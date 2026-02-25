@@ -1,10 +1,11 @@
 """
 模型配置文件
-定义情绪标签、行为标签、人格特征等
+定义情绪标签、行为标签、人格特征、API配置等
 """
 
+import os
 from dataclasses import dataclass, field
-from typing import List, Dict
+from typing import List, Dict, Optional
 from enum import Enum
 
 
@@ -188,10 +189,12 @@ class JointModelConfig:
 
     # 训练参数
     max_length: int = 128
-    batch_size: int = 32
+    batch_size: int = 16              # 8GB显存建议16
     learning_rate: float = 2e-5
     num_epochs: int = 10
     warmup_ratio: float = 0.1
+    gradient_accumulation_steps: int = 2  # 梯度累积，等效batch=32
+    fp16: bool = True                 # 混合精度训练，省显存
 
     # 多任务权重
     emotion_loss_weight: float = 1.0
@@ -200,8 +203,243 @@ class JointModelConfig:
     intensity_loss_weight: float = 0.5
 
 
+# ============== 8GB显存优化配置 ==============
+@dataclass
+class JointModelConfigLowVRAM(JointModelConfig):
+    """8GB显存优化配置"""
+    batch_size: int = 8
+    gradient_accumulation_steps: int = 4  # 等效batch=32
+    max_length: int = 96              # 稍微缩短，省显存
+    fp16: bool = True
+
+
 # ============== 默认配置实例 ==============
 DEFAULT_PERSONALITY = PersonalityConfig()
 DEFAULT_EMOTION_CONFIG = EmotionModelConfig()
 DEFAULT_BEHAVIOR_CONFIG = BehaviorModelConfig()
 DEFAULT_JOINT_CONFIG = JointModelConfig()
+DEFAULT_JOINT_CONFIG_LOW_VRAM = JointModelConfigLowVRAM()
+
+
+# ============== LLM API 配置 ==============
+class LLMProvider(Enum):
+    """支持的LLM提供商"""
+    OPENAI = "openai"
+    DEEPSEEK = "deepseek"
+    ANTHROPIC = "anthropic"
+    CUSTOM = "custom"  # 自定义API（兼容OpenAI格式）
+
+
+@dataclass
+class LLMConfig:
+    """大模型API配置"""
+    # 提供商
+    provider: LLMProvider = LLMProvider.OPENAI
+
+    # API密钥（优先从环境变量读取）
+    api_key: Optional[str] = None
+
+    # API Base URL
+    base_url: Optional[str] = None
+
+    # 模型名称
+    model: str = "gpt-5.2-instant"
+
+    # 生成参数
+    temperature: float = 0.8
+    max_tokens: int = 200
+    top_p: float = 0.95
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
+
+    # 超时设置（秒）
+    timeout: int = 30
+
+    # 重试设置
+    max_retries: int = 3
+    retry_delay: float = 1.0
+
+    def __post_init__(self):
+        """初始化后处理：从环境变量读取密钥"""
+        if self.api_key is None:
+            env_key_map = {
+                LLMProvider.OPENAI: "OPENAI_API_KEY",
+                LLMProvider.DEEPSEEK: "DEEPSEEK_API_KEY",
+                LLMProvider.ANTHROPIC: "ANTHROPIC_API_KEY",
+                LLMProvider.CUSTOM: "CUSTOM_API_KEY",
+            }
+            env_key = env_key_map.get(self.provider, "OPENAI_API_KEY")
+            self.api_key = os.environ.get(env_key)
+
+        # 设置默认base_url
+        if self.base_url is None:
+            self.base_url = self._get_default_base_url()
+
+    def _get_default_base_url(self) -> Optional[str]:
+        """获取默认的API Base URL"""
+        url_map = {
+            LLMProvider.OPENAI: "https://api.openai.com/v1",
+            LLMProvider.DEEPSEEK: "https://api.deepseek.com/v1",
+            LLMProvider.ANTHROPIC: None,  # Anthropic SDK自带
+            LLMProvider.CUSTOM: None,
+        }
+        return url_map.get(self.provider)
+
+    @classmethod
+    def from_env(cls, provider: str = "openai") -> "LLMConfig":
+        """从环境变量创建配置"""
+        provider_enum = LLMProvider(provider.lower())
+        return cls(provider=provider_enum)
+
+    @classmethod
+    def openai(
+        cls,
+        api_key: Optional[str] = None,
+        model: str = "gpt-5.2-instant",
+        base_url: Optional[str] = None
+    ) -> "LLMConfig":
+        """创建OpenAI配置"""
+        return cls(
+            provider=LLMProvider.OPENAI,
+            api_key=api_key,
+            model=model,
+            base_url=base_url or "https://api.openai.com/v1"
+        )
+
+    @classmethod
+    def deepseek(
+        cls,
+        api_key: Optional[str] = None,
+        model: str = "deepseek-chat"
+    ) -> "LLMConfig":
+        """创建DeepSeek配置"""
+        return cls(
+            provider=LLMProvider.DEEPSEEK,
+            api_key=api_key,
+            model=model,
+            base_url="https://api.deepseek.com/v1"
+        )
+
+    @classmethod
+    def anthropic(
+        cls,
+        api_key: Optional[str] = None,
+        model: str = "claude-3-5-haiku-20241022"
+    ) -> "LLMConfig":
+        """创建Anthropic配置"""
+        return cls(
+            provider=LLMProvider.ANTHROPIC,
+            api_key=api_key,
+            model=model,
+            base_url=None
+        )
+
+    @classmethod
+    def custom(
+        cls,
+        base_url: str,
+        api_key: Optional[str] = None,
+        model: str = "gpt-5.2-instant"
+    ) -> "LLMConfig":
+        """创建自定义API配置（兼容OpenAI格式）"""
+        return cls(
+            provider=LLMProvider.CUSTOM,
+            api_key=api_key,
+            model=model,
+            base_url=base_url
+        )
+
+
+# ============== 预设LLM配置 ==============
+# GPT-5 系列
+DEFAULT_LLM_CONFIG = LLMConfig.openai(model="gpt-5")
+
+# GPT-5.2 系列(默认)
+GPT5_INSTANT_CONFIG = LLMConfig.openai(model="gpt-5.2-instant")
+GPT5_THINKING_CONFIG = LLMConfig.openai(model="gpt-5.2-thinking")
+
+# Claude 4.5 系列
+CLAUDE_OPUS_CONFIG = LLMConfig.anthropic(model="claude-opus-4-5-20251101")
+CLAUDE_SONNET_CONFIG = LLMConfig.anthropic(model="claude-sonnet-4-5-20241022")
+CLAUDE_HAIKU_CONFIG = LLMConfig.anthropic(model="claude-3-5-haiku-20241022")
+
+# DeepSeek
+DEEPSEEK_CONFIG = LLMConfig.deepseek()
+
+
+# ============== 数据标注API配置 ==============
+@dataclass
+class AnnotationAPIConfig:
+    """数据标注API配置"""
+    # 主要标注模型
+    primary_provider: LLMProvider = LLMProvider.OPENAI
+    primary_model: str = "gpt-5.2-instant"
+    primary_api_key: Optional[str] = None
+    primary_base_url: Optional[str] = None
+
+    # 备用标注模型（用于对比或降级）
+    fallback_provider: LLMProvider = LLMProvider.DEEPSEEK
+    fallback_model: str = "deepseek-chat"
+    fallback_api_key: Optional[str] = None
+    fallback_base_url: Optional[str] = None
+
+    # 标注参数
+    batch_size: int = 10
+    temperature: float = 0.3  # 标注用低温度，提高一致性
+    max_retries: int = 3
+
+    def __post_init__(self):
+        """从环境变量读取密钥"""
+        if self.primary_api_key is None:
+            self.primary_api_key = os.environ.get("OPENAI_API_KEY")
+        if self.fallback_api_key is None:
+            self.fallback_api_key = os.environ.get("DEEPSEEK_API_KEY")
+        if self.primary_base_url is None:
+            self.primary_base_url = "https://api.openai.com/v1"
+        if self.fallback_base_url is None:
+            self.fallback_base_url = "https://api.deepseek.com/v1"
+
+
+DEFAULT_ANNOTATION_CONFIG = AnnotationAPIConfig()
+
+
+# ============== 分级记忆系统配置 ==============
+@dataclass
+class MemoryConfig:
+    """Token 计数导向的分级记忆系统配置"""
+
+    # Mem0 向量存储
+    vector_store_path: str = "./data/qdrant_db"
+    collection_name: str = "neuro_memory"
+
+    # Mem0 内部 LLM（压缩摘要/事实抽取用，复用对话 LLM 的 key/endpoint）
+    mem0_llm_model: str = "gpt-5.2-instant"
+    mem0_llm_temperature: float = 0.1
+    mem0_api_key: Optional[str] = None
+    mem0_base_url: Optional[str] = None     # 第三方供应商 endpoint
+
+    # LLM 上下文窗口大小（按实际使用的模型填写）
+    context_window_tokens: int = 128_000    # GPT-5.2 Instant: 128K
+
+    # L1 压缩触发阈值（占上下文窗口比例），达到后将最旧部分压缩到 L2
+    compression_threshold: float = 0.75
+
+    # 每次压缩 L1 最旧的比例
+    compression_ratio: float = 0.5
+
+    # Mem0 检索参数
+    l3_search_limit: int = 5
+    l4_search_limit: int = 3
+    relevance_threshold: float = 0.7
+
+    @property
+    def compression_trigger_tokens(self) -> int:
+        return int(self.context_window_tokens * self.compression_threshold)
+
+    def __post_init__(self):
+        if self.mem0_api_key is None:
+            self.mem0_api_key = os.environ.get("OPENAI_API_KEY")
+
+
+DEFAULT_MEMORY_CONFIG = MemoryConfig()
+

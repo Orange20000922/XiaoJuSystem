@@ -2,423 +2,476 @@
 
 类Neuro虚拟主播AI系统 - 使用两个小模型+大模型API实现风格稳定的对话生成
 
+## 系统架构
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Neuro-Like System 架构图                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐    ┌──────────────────┐    ┌─────────────────────────┐    │
+│  │  弹幕/评论   │───▶│   内容过滤器      │───▶│   标注模型 (轻量级)      │    │
+│  │  数据采集    │    │  content_filter  │    │   annotation_model      │    │
+│  └─────────────┘    └──────────────────┘    └───────────┬─────────────┘    │
+│                                                         │                   │
+│                                                         ▼                   │
+│                                              ┌─────────────────────┐        │
+│                                              │   标注数据 (JSON)    │        │
+│                                              └───────────┬─────────┘        │
+│                                                         │                   │
+│                                                         ▼                   │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                        训练阶段                                      │   │
+│  │  ┌─────────────────┐              ┌─────────────────────────────┐   │   │
+│  │  │  联合模型训练     │              │  标注模型训练 (知识蒸馏)      │   │   │
+│  │  │  joint_model     │              │  GPT标注 → 小模型 → 大规模   │   │   │
+│  │  └────────┬────────┘              └─────────────────────────────┘   │   │
+│  └───────────┼─────────────────────────────────────────────────────────┘   │
+│              │                                                              │
+│              ▼                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                        推理阶段                                      │   │
+│  │                                                                      │   │
+│  │  用户输入 ──▶ [联合模型] ──▶ {情绪, 行为, 语气} ──▶ [LLM API] ──▶ 回复  │   │
+│  │              (15ms GPU)                           (GPT/Claude)       │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
 ## 项目结构
 
 ```
 neuro_like_system/
-├── configs/                # 配置文件
+├── configs/                    # 配置文件
 │   ├── __init__.py
-│   └── model_config.py    # 模型配置、标签定义、人格配置
-├── models/                 # 模型架构
+│   └── model_config.py        # 模型配置、标签定义、人格配置、API配置
+│
+├── models/                     # 模型架构
 │   ├── __init__.py
-│   ├── emotion_model.py   # 情绪识别模型 (Encoder)
-│   ├── behavior_model.py  # 行为生成模型 (Encoder-Decoder)
-│   └── joint_model.py     # 联合模型 (推荐)
-├── data/                   # 数据处理
-│   └── dataset.py         # 数据集定义
-├── scripts/                # 脚本
-│   ├── data_annotation.py # 数据标注工具
-│   ├── train_joint_model.py # 训练脚本
-│   └── inference_pipeline.py # 推理Pipeline
-└── utils/                  # 工具函数
+│   ├── emotion_model.py       # 情绪识别模型 (Encoder)
+│   ├── behavior_model.py      # 行为生成模型 (Encoder-Decoder)
+│   ├── joint_model.py         # 联合模型 (推荐用于推理)
+│   └── annotation_model.py    # 标注模型 (用于知识蒸馏)
+│
+├── data/                       # 数据处理
+│   └── dataset.py             # 数据集定义
+│
+├── src/                        # 核心脚本
+│   ├── content_filter.py      # 内容过滤器 (清洗负面内容)
+│   ├── danmaku_annotation.py  # 弹幕标注工具 (支持API和模型标注)
+│   ├── data_annotation.py     # 通用数据标注工具
+│   ├── train_annotation_model.py  # 标注模型训练
+│   ├── train_joint_model.py   # 联合模型训练
+│   ├── inference_pipeline.py  # 推理Pipeline
+│   └── export_onnx.py         # ONNX导出 (用于C++部署)
+│
+├── src/wordlists/             # 敏感词词库 (自动生成)
+│   ├── profanity.txt
+│   ├── political.txt
+│   └── ...
+│
+├── checkpoints/               # 模型检查点 (训练后生成)
+│   ├── annotation_model/
+│   └── joint_model/
+│
+├── README.md
+└── requirements.txt
 ```
 
-## 系统架构
+## 完整工作流
 
-### 方案A: 两个独立模型 (原始方案)
-
-```
-用户输入 → [情绪识别模型] → 情绪标签+强度
-                              ↓
-                        [行为生成模型] → 行为+语气+长度
-                              ↓
-                        [大模型API] → 自然语言回复
-```
-
-### 方案B: 联合模型 (推荐)
-
-```
-用户输入 + 人格配置 → [联合模型] → {情绪, 行为, 语气}
-                                      ↓
-                                [大模型API] → 自然语言回复
-```
-
-**推荐使用方案B的原因:**
-- 参数更少 (~100M vs 200M)
-- 训练更简单 (一个模型)
-- 推理更快 (一次前向传播)
-- 情绪和行为联合训练，一致性更好
-
-## 核心组件
-
-### 1. 情绪标签 (10种)
-- joy (喜悦)
-- sadness (悲伤)
-- anger (愤怒)
-- fear (恐惧)
-- surprise (惊讶)
-- disgust (厌恶)
-- neutral (中性)
-- excitement (兴奋)
-- tenderness (温柔)
-- curiosity (好奇)
-
-### 2. 行为标签 (12种)
-- respond_positive (积极回应)
-- respond_negative (消极回应)
-- ask_question (提问)
-- share_experience (分享经历)
-- give_advice (给建议)
-- express_empathy (表达共情)
-- make_joke (开玩笑)
-- change_topic (转移话题)
-- seek_clarification (寻求澄清)
-- agree (同意)
-- disagree (不同意)
-- neutral_acknowledge (中性确认)
-
-### 3. 语气标签 (8种)
-- enthusiastic (热情)
-- calm (平静)
-- playful (俏皮)
-- serious (严肃)
-- warm (温暖)
-- cold (冷淡)
-- sarcastic (讽刺)
-- supportive (支持)
-
-### 4. 人格配置
-基于Big Five人格模型:
-- openness (开放性)
-- conscientiousness (尽责性)
-- extraversion (外向性)
-- agreeableness (宜人性)
-- neuroticism (神经质)
-
-额外特质:
-- humor_tendency (幽默倾向)
-- empathy_level (共情能力)
-- curiosity_level (好奇心)
-
-## 快速开始
-
-### 1. 安装依赖
+### 阶段1: 环境准备
 
 ```bash
-pip install torch transformers tqdm openai anthropic
+# 安装依赖
+pip install torch transformers tqdm openai anthropic onnx onnxruntime
+
+# 或使用requirements.txt
+pip install -r requirements.txt
 ```
 
-### 2. 数据标注
+### 阶段2: 数据采集
 
-#### 方案A: 使用GPT-4o-mini标注 (推荐)
+使用你的弹幕爬虫采集数据:
+- 推荐关键词: Neuro、AI虚拟主播、Vedal 等
+- 弹幕优势: 无风控限制，单视频可获取上万条
+- 目标数量: 10万条原始数据
+
+### 阶段3: 数据清洗
 
 ```bash
-python scripts/data_annotation.py annotate \
-    --input raw_texts.json \
-    --output annotated_data.json \
+# 初始化敏感词词库 (首次运行)
+python -c "from src.content_filter import init_wordlists; init_wordlists('./src/wordlists')"
+
+# 过滤负面内容
+python src/content_filter.py filter \
+    --input raw_danmaku.json \
+    --output cleaned_danmaku.json \
+    --wordlist_dir ./src/wordlists
+```
+
+过滤类别:
+- profanity (脏话)
+- political (政治敏感)
+- pornographic (色情)
+- advertisement (广告)
+- toxic (人身攻击)
+- spam (垃圾信息)
+
+### 阶段4: 数据标注 (知识蒸馏)
+
+#### 4.1 GPT标注种子数据
+
+```bash
+# 使用模式匹配预标注 + GPT标注剩余数据
+python src/danmaku_annotation.py annotate \
+    --input cleaned_danmaku.json \
+    --output seed_annotated.json \
     --provider openai \
     --model gpt-4o-mini \
     --api_key YOUR_API_KEY \
-    --batch_size 10
+    --batch_size 50
 ```
 
-#### 方案B: 使用DeepSeek标注 (低成本)
+预期: 模式匹配覆盖70%+，API只需标注30%，节省大量成本
+
+#### 4.2 训练标注模型
 
 ```bash
-python scripts/data_annotation.py annotate \
-    --input raw_texts.json \
-    --output annotated_data.json \
-    --provider deepseek \
-    --api_key YOUR_DEEPSEEK_KEY \
-    --batch_size 20
+python src/train_annotation_model.py \
+    --data seed_annotated.json \
+    --output_dir ./checkpoints/annotation_model \
+    --batch_size 64 \
+    --num_epochs 5 \
+    --device cuda
 ```
 
-#### 对比不同API的标注质量
+#### 4.3 使用标注模型大规模标注
 
 ```bash
-python scripts/data_annotation.py compare \
-    --input test_texts.json \
-    --output comparison.json \
-    --openai_key YOUR_OPENAI_KEY \
-    --deepseek_key YOUR_DEEPSEEK_KEY
+python src/danmaku_annotation.py annotate-model \
+    --input large_dataset.json \
+    --output full_annotated.json \
+    --model_path ./checkpoints/annotation_model/best.pt \
+    --batch_size 128 \
+    --device cuda
 ```
 
-**输入数据格式 (raw_texts.json):**
-```json
-[
-    {"text": "今天天气真好！"},
-    {"text": "我感觉有点累..."},
-    {"text": "哈哈哈笑死我了"}
-]
-```
+推理速度: ~10000条/分钟 (RTX 5060)
 
-**输出数据格式 (annotated_data.json):**
-```json
-[
-    {
-        "text": "今天天气真好！",
-        "emotion": "joy",
-        "intensity": 0.8,
-        "behavior": "respond_positive",
-        "tone": "enthusiastic",
-        "response_length": "medium",
-        "confidence": 0.95
-    }
-]
-```
-
-### 3. 训练模型
+### 阶段5: 训练联合模型
 
 ```bash
-python scripts/train_joint_model.py \
-    --train_data annotated_data.json \
-    --val_data val_data.json \
-    --output_dir ./checkpoints \
+# 标准训练
+python src/train_joint_model.py \
+    --train_data full_annotated.json \
+    --output_dir ./checkpoints/joint_model \
     --batch_size 32 \
-    --num_epochs 10 \
-    --learning_rate 2e-5 \
+    --num_epochs 10
+
+# 低显存模式 (8GB VRAM)
+python src/train_joint_model.py \
+    --train_data full_annotated.json \
+    --output_dir ./checkpoints/joint_model \
+    --low_vram \
     --device cuda
 ```
 
-**训练参数说明:**
-- `batch_size`: 根据显存调整 (16GB显存建议32)
-- `num_epochs`: 10-15轮通常足够
-- `learning_rate`: 2e-5 是BERT微调的标准学习率
-
-**预期训练时间:**
-- 5万条数据，RTX 4090: ~2-3小时
-- 5万条数据，RTX 3060: ~6-8小时
-- 5万条数据，CPU: 不推荐 (太慢)
-
-### 4. 推理对话
+### 阶段6: 推理部署
 
 ```bash
-python scripts/inference_pipeline.py \
-    --checkpoint ./checkpoints/best.pt \
+# 交互式对话 (完整模式)
+python src/inference_pipeline.py \
+    --checkpoint ./checkpoints/joint_model/best.pt \
     --provider openai \
-    --api_key YOUR_API_KEY \
     --model gpt-4o-mini \
-    --device cuda
+    --api_key YOUR_API_KEY
 ```
 
-**支持的大模型API:**
-- OpenAI: gpt-4o, gpt-4o-mini, gpt-3.5-turbo
-- DeepSeek: deepseek-chat
-- Claude: claude-3-haiku-20240307, claude-3-sonnet-20240229
+#### 测试CLI
 
-## 模型详细说明
+提供独立的测试CLI，支持多种运行模式：
 
-### 联合模型架构 (joint_model.py)
+```bash
+# 1. 纯本地测试 (无需模型、无需API，快速验证流程)
+python src/test_cli.py --mock --offline
 
-```python
-from models import create_joint_model
-from configs import DEFAULT_JOINT_CONFIG, DEFAULT_PERSONALITY
+# 2. 测试LLM API连接 (无需训练模型)
+python src/test_cli.py --mock --provider openai --api_key YOUR_KEY
 
-# 创建模型
-model, tokenizer = create_joint_model(DEFAULT_JOINT_CONFIG)
+# 3. 测试小模型推理 (需要训练模型，不调用API)
+python src/test_cli.py --checkpoint ./checkpoints/joint_model/best.pt --offline
 
-# 推理
-import torch
-personality_vec = torch.tensor(DEFAULT_PERSONALITY.to_embedding_vector())
-result = model.predict("今天天气真好！", personality_vec, tokenizer)
-
-print(result)
-# {
-#     "emotion": {
-#         "primary": "joy",
-#         "intensity": 0.85,
-#         "primary_prob": 0.92
-#     },
-#     "behavior": {
-#         "type": "respond_positive",
-#         "tone": "enthusiastic",
-#         "response_length": "medium"
-#     }
-# }
+# 4. 完整流程测试 (需要模型+API)
+python src/test_cli.py --checkpoint ./checkpoints/joint_model/best.pt \
+    --provider openai --api_key YOUR_KEY
 ```
 
-### 模型参数量
+**测试模式对比:**
 
-| 模型 | 参数量 | 推理速度 (CPU) | 推理速度 (GPU) |
-|------|--------|---------------|---------------|
-| 情绪识别模型 | ~110M | ~100ms | ~20ms |
-| 行为生成模型 | ~120M | ~150ms | ~30ms |
-| **联合模型 (推荐)** | **~100M** | **~80ms** | **~15ms** |
+| 模式 | 小模型 | LLM | 用途 |
+|------|--------|-----|------|
+| `--mock --offline` | 规则模拟 | 模拟回复 | 快速验证流程 |
+| `--mock` | 规则模拟 | 真实API | 测试API连接 |
+| `--offline` | 真实模型 | 模拟回复 | 测试模型推理 |
+| 完整模式 | 真实模型 | 真实API | 生产环境 |
 
-## 成本估算
+**CLI命令:**
+- `quit/exit` - 退出
+- `clear` - 清空对话历史
+- `debug` - 切换详细输出
+- `status` - 显示当前状态
 
-### 数据标注成本 (5万条)
+#### ONNX导出 (可选，用于C++部署)
 
-| 方案 | 模型 | 成本 | 质量 |
-|------|------|------|------|
-| GPT-4 | gpt-4 | ~$100-150 | 最高 (90%+) |
-| **GPT-4o-mini (推荐)** | **gpt-4o-mini** | **~$7-10** | **高 (85-88%)** |
-| DeepSeek | deepseek-chat | ~$70 | 中等 (80-85%) |
+```bash
+# 导出标注模型
+python src/export_onnx.py annotation \
+    --checkpoint ./checkpoints/annotation_model/best.pt \
+    --output_dir ./onnx/annotation_model
 
-### 训练成本
+# 导出联合模型
+python src/export_onnx.py joint \
+    --checkpoint ./checkpoints/joint_model/best.pt \
+    --output_dir ./onnx/joint_model
+```
 
-| 方案 | 成本 |
+导出文件:
+- `model.onnx` - ONNX模型
+- `model.json` - 元数据和标签映射
+- `vocab.txt` - 词表
+- `tokenizer_config.json` - 分词器配置
+
+## 标签定义
+
+### 情绪标签 (10种)
+
+| ID | 英文 | 中文 | 示例 |
+|----|------|------|------|
+| 0 | joy | 喜悦 | "太棒了！" |
+| 1 | sadness | 悲伤 | "好难过..." |
+| 2 | anger | 愤怒 | "气死我了" |
+| 3 | fear | 恐惧 | "好害怕" |
+| 4 | surprise | 惊讶 | "什么？！" |
+| 5 | disgust | 厌恶 | "恶心" |
+| 6 | neutral | 中性 | "好的" |
+| 7 | excitement | 兴奋 | "冲冲冲！" |
+| 8 | tenderness | 温柔 | "辛苦了~" |
+| 9 | curiosity | 好奇 | "这是什么？" |
+
+### 行为标签 (12种)
+
+| 英文 | 中文 | 说明 |
+|------|------|------|
+| respond_positive | 积极回应 | 正面肯定的回复 |
+| respond_negative | 消极回应 | 负面否定的回复 |
+| ask_question | 提问 | 向用户提问 |
+| share_experience | 分享经历 | 分享自己的经历 |
+| give_advice | 给建议 | 提供建议或指导 |
+| express_empathy | 表达共情 | 表示理解和同情 |
+| make_joke | 开玩笑 | 幽默调侃 |
+| change_topic | 转移话题 | 切换到其他话题 |
+| seek_clarification | 寻求澄清 | 请求更多信息 |
+| agree | 同意 | 表示赞同 |
+| disagree | 不同意 | 表示反对 |
+| neutral_acknowledge | 中性确认 | 简单确认收到 |
+
+### 语气标签 (8种)
+
+| 英文 | 中文 |
 |------|------|
-| 本地GPU (RTX 3060/4060) | $0 (电费忽略) |
-| 云GPU (RunPod RTX 4090) | ~$30-40 |
-| 云GPU (AWS A100) | ~$80-100 |
+| enthusiastic | 热情 |
+| calm | 平静 |
+| playful | 俏皮 |
+| serious | 严肃 |
+| warm | 温暖 |
+| cold | 冷淡 |
+| sarcastic | 讽刺 |
+| supportive | 支持 |
 
-### 运行成本 (每月，个人使用)
+## 人格配置
 
-假设每天对话100轮，每轮200 tokens:
-
-| 大模型 | 月成本 |
-|--------|--------|
-| GPT-4o | ~$30-50 |
-| **GPT-4o-mini (推荐)** | **~$1-3** |
-| DeepSeek | ~$1-2 |
-| Claude Haiku | ~$0.5-1 |
-| 本地部署 (Qwen2-7B) | $0 |
-
-### 总预算 (200-400美元)
-
-**推荐配置 ($250-300):**
-```
-数据标注:
-- GPT-4o-mini标注4万条: $6-8
-- GPT-4标注1万条复杂样本: $20-30
-- 人工审核500条: 你的时间
-
-模型训练:
-- 云GPU租用 (RunPod RTX 4090): $30-40
-
-运行成本 (首年):
-- Claude Haiku API: $15-30/月 × 12 = $180-360
-
-总计: $236-438 (在预算内)
-```
-
-## 性能预期
-
-### 小模型准确率
-
-| 指标 | 使用GPT-4o-mini标注 | 使用GPT-4标注 |
-|------|-------------------|--------------|
-| 情绪识别准确率 | 80-85% | 85-90% |
-| 行为识别准确率 | 75-82% | 82-88% |
-| 推理速度 (GPU) | ~15ms | ~15ms |
-
-### 与Neuro对比
-
-| 能力 | Neuro | 你的系统 | 差距 |
-|------|-------|---------|------|
-| 对话质量 | 95分 | 80-85分 | 模型规模 |
-| **风格一致性** | **90分** | **85-90分** | **架构优势** |
-| 反应速度 | 快 | 相当 | 小模型快 |
-| 记忆能力 | 强 | 中等 | 简化设计 |
-
-**结论:** 对于个人使用，80-85分的水平完全够用，风格一致性这个核心目标可以做得很好。
-
-## 高级功能
-
-### 自定义人格
+基于Big Five人格模型 + 额外特质:
 
 ```python
 from configs import PersonalityConfig
 
-# 创建自定义人格
-my_personality = PersonalityConfig(
-    name="小助手",
-    extraversion=0.6,      # 中等外向
-    humor_tendency=0.5,    # 适度幽默
-    empathy_level=0.9,     # 高共情
-    traits=["温柔", "耐心", "专业"]
-)
-
-# 使用自定义人格训练/推理
-```
-
-### 流式数据加载 (大规模数据)
-
-```python
-from data.dataset import create_dataloader
-
-# 使用流式加载，节省内存
-dataloader = create_dataloader(
-    data_path="large_dataset.jsonl",  # JSONL格式
-    tokenizer=tokenizer,
-    personality=personality,
-    streaming=True  # 启用流式加载
+# 默认人格 (类Neuro风格)
+personality = PersonalityConfig(
+    name="Neuro",
+    # Big Five
+    openness=0.8,           # 开放性
+    conscientiousness=0.5,  # 尽责性
+    extraversion=0.7,       # 外向性
+    agreeableness=0.6,      # 宜人性
+    neuroticism=0.4,        # 神经质
+    # 额外特质
+    humor_tendency=0.8,     # 幽默倾向
+    empathy_level=0.7,      # 共情能力
+    curiosity_level=0.9,    # 好奇心
+    traits=["活泼", "可爱", "有点傲娇"]
 )
 ```
 
-### 多人格切换
+## 模型说明
+
+### 标注模型 (annotation_model.py)
+
+用于知识蒸馏的轻量级模型:
+- 基座: `hfl/chinese-roberta-wwm-ext`
+- 参数量: ~100M
+- 输出: 情绪分类 + 强度回归
+- 推理速度: ~10000条/分钟 (GPU)
+
+### 联合模型 (joint_model.py)
+
+用于最终推理的主模型:
+- 基座: `hfl/chinese-roberta-wwm-ext`
+- 参数量: ~100M
+- 输出: 情绪 + 行为 + 语气 + 强度 + 回复长度
+- 推理速度: ~15ms/条 (GPU)
+
+### 模型对比
+
+| 模型 | 用途 | 参数量 | 输出 |
+|------|------|--------|------|
+| 标注模型 | 大规模数据标注 | ~100M | 情绪+强度 |
+| 联合模型 | 推理部署 | ~100M | 情绪+行为+语气 |
+
+## API配置
+
+支持多种LLM API:
 
 ```python
-# 在推理时动态切换人格
-personalities = {
-    "活泼": PersonalityConfig(extraversion=0.9, humor_tendency=0.8),
-    "严肃": PersonalityConfig(extraversion=0.3, humor_tendency=0.2),
-}
+from configs import LLMConfig
 
-result = model.predict(text, personalities["活泼"].to_embedding_vector(), tokenizer)
+# OpenAI
+config = LLMConfig.openai(
+    api_key="YOUR_KEY",
+    model="gpt-4o-mini",
+    base_url="https://api.openai.com/v1"  # 可选，支持代理
+)
+
+# DeepSeek
+config = LLMConfig.deepseek(
+    api_key="YOUR_KEY",
+    model="deepseek-chat"
+)
+
+# Claude
+config = LLMConfig.claude(
+    api_key="YOUR_KEY",
+    model="claude-3-haiku-20240307"
+)
 ```
+
+## 成本估算
+
+### 数据标注成本 (10万条弹幕)
+
+| 阶段 | 方法 | 成本 |
+|------|------|------|
+| 模式匹配预标注 | 本地规则 | $0 |
+| GPT标注种子数据 | gpt-4o-mini (3万条) | ~$5-8 |
+| 训练标注模型 | 本地GPU | $0 |
+| 模型标注剩余数据 | 本地推理 (7万条) | $0 |
+| **总计** | | **~$5-8** |
+
+### 训练成本
+
+| 硬件 | 成本 |
+|------|------|
+| 本地GPU (RTX 5060 8GB) | $0 |
+| 云GPU (RunPod RTX 4090) | ~$30-40 |
+
+### 运行成本 (每月)
+
+| LLM | 成本 (100轮/天) |
+|-----|-----------------|
+| GPT-4o-mini | ~$1-3 |
+| Claude Haiku | ~$0.5-1 |
+| DeepSeek | ~$1-2 |
+| 本地LLM (未来) | $0 |
+
+### 总预算 ($200-400)
+
+```
+数据标注: $5-10
+云GPU训练 (可选): $30-40
+LLM API (首年): $12-36
+─────────────────
+总计: $47-86 (远低于预算)
+
+剩余预算可用于:
+- 更多GPT-4标注提升质量
+- 更长时间的API使用
+- 未来本地LLM部署
+```
+
+## 硬件要求
+
+### 最低配置
+- GPU: 8GB VRAM (RTX 3060/4060/5060)
+- RAM: 16GB
+- 存储: 10GB
+
+### 推荐配置
+- GPU: 12GB+ VRAM (RTX 4070/4080)
+- RAM: 32GB
+- 存储: 50GB
+
+### 8GB显存优化
+
+使用 `--low_vram` 参数:
+- batch_size=8
+- gradient_accumulation=4
+- FP16混合精度
 
 ## 常见问题
 
-### Q1: 我应该用两个独立模型还是联合模型？
-
-**A:** 强烈推荐联合模型 (joint_model.py)，原因:
-- 更简单: 只需训练一个模型
-- 更快: 推理速度快一倍
-- 更小: 参数量少一半
-- 更好: 情绪和行为联合训练，一致性更好
-
-### Q2: GPT-4o-mini和DeepSeek哪个更好？
-
-**A:** 建议先对比测试 (使用compare命令)，一般来说:
-- GPT-4o-mini: 质量更高，中文理解好，性价比极高
-- DeepSeek: 成本更低，中文也不错，但一致性稍差
-
-### Q3: 需要多少训练数据？
+### Q1: 知识蒸馏的意义是什么？
 
 **A:**
-- 最少: 1万条 (可以跑起来，质量一般)
-- 推荐: 3-5万条 (质量不错)
-- 理想: 10万条+ (接近商业水平)
+- GPT标注质量高但成本高 (~$0.0002/条)
+- 训练小模型后，标注成本降为0
+- 10万条数据: GPT全标注~$20 vs 蒸馏~$5
 
-### Q4: 训练需要多久？
-
-**A:** 5万条数据:
-- RTX 4090: 2-3小时
-- RTX 3060: 6-8小时
-- 云GPU (A100): 1-2小时
-
-### Q5: 可以用CPU训练吗？
-
-**A:** 技术上可以，但不推荐:
-- CPU训练5万条数据需要几天
-- 建议租用云GPU (RunPod/Vast.ai很便宜)
-
-### Q6: 如何提高模型质量？
+### Q2: 为什么用弹幕而不是评论？
 
 **A:**
-1. 提高标注质量 (使用GPT-4标注关键样本)
-2. 增加训练数据量
-3. 人工审核并修正错误标注
-4. 使用主动学习 (挑选低置信度样本重新标注)
-5. 在真实场景中收集badcase，持续优化
+- 弹幕无风控限制，采集效率高
+- 单视频可获取上万条
+- 弹幕更口语化，适合训练对话模型
 
-## 下一步计划
+### Q3: C++ ONNX部署值得吗？
 
-- [ ] 添加TTS语音合成
-- [ ] 添加Live2D表情驱动
-- [ ] 实现长期记忆系统 (向量数据库)
-- [ ] 支持多模态输入 (图片、语音)
-- [ ] 添加情绪轨迹可视化
-- [ ] 实现在线学习 (从用户反馈中学习)
+**A:**
+- 当前: 不值得 (LLM API是瓶颈)
+- 未来 (本地LLM): 值得 (可提升40-50%性能)
 
-## 参考资料
+### Q4: 如何提升标注质量？
 
-- Neuro-sama: https://www.twitch.tv/vedal987
-- Transformer论文: "Attention is All You Need"
-- BERT: "BERT: Pre-training of Deep Bidirectional Transformers"
-- Big Five人格模型: https://en.wikipedia.org/wiki/Big_Five_personality_traits
+**A:**
+1. 用GPT-4标注难样本
+2. 人工审核低置信度样本
+3. 增加模式匹配规则
+4. 迭代训练标注模型
+
+### Q5: 支持哪些语言？
+
+**A:** 当前专注中文，但架构支持多语言:
+- 更换预训练模型 (如 `bert-base-multilingual`)
+- 调整模式匹配规则
+
+## 远期规划
+
+- [ ] 本地LLM替代API (Qwen2-7B蒸馏)
+- [ ] C++ ONNX Runtime部署
+- [ ] TTS语音合成集成
+- [ ] Live2D表情驱动
+- [ ] 长期记忆系统 (向量数据库)
+- [ ] 多模态输入 (图片、语音)
 
 ## License
 

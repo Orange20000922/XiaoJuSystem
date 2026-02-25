@@ -1,0 +1,60 @@
+{
+  "_comment": "复制此文件为 config.json 并填写你的配置。API key 建议用环境变量，此处留空。",
+
+  "llm": {
+    "provider": "custom",
+    "model": "gpt-5.2-instant",
+    "api_key": "",
+    "base_url": "",
+    "temperature": 0.8,
+    "max_tokens": 500,
+    "top_p": 0.95,
+    "frequency_penalty": 0.0,
+    "presence_penalty": 0.0,
+    "timeout": 30,
+    "max_retries": 3,
+    "retry_delay": 1.0
+  },
+
+  "personality": {
+    "name": "Neuro",
+    "openness": 0.8,
+    "conscientiousness": 0.5,
+    "extraversion": 0.7,
+    "agreeableness": 0.8,
+    "neuroticism": 0.3,
+    "emotional_baseline": "positive",
+    "emotional_volatility": 0.4,
+    "humor_tendency": 0.7,
+    "empathy_level": 0.8,
+    "curiosity_level": 0.9,
+    "formality": 0.3,
+    "verbosity": 0.5,
+    "traits": ["活泼", "好奇", "善良"]
+  },
+
+  "memory": {
+    "vector_store_path": "./data/qdrant_db",
+    "collection_name": "neuro_memory",
+    "mem0_llm_model": "gpt-5.2-instant",
+    "mem0_llm_temperature": 0.1,
+    "mem0_api_key": "",
+    "mem0_base_url": "",
+    "context_window_tokens": 128000,
+    "compression_threshold": 0.75,
+    "compression_ratio": 0.5,
+    "l3_search_limit": 5,
+    "l4_search_limit": 3,
+    "relevance_threshold": 0.7
+  },
+
+  "attention": {
+    "intensity_threshold": 0.7,
+    "cooldown_seconds": 60
+  },
+
+  "small_model": {
+    "checkpoint_path": "./checkpoints/joint_model/best_model.pt",
+    "device": "cpu"
+  }
+}

@@ -5,25 +5,22 @@ GPT/DeepSeek 数据标注脚本
 
 import json
 import time
-import random
 from pathlib import Path
 from typing import Dict, List, Optional
 from tqdm import tqdm
-from dataclasses import dataclass
 import argparse
 
+import sys
+from pathlib import Path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
-@dataclass
-class AnnotationConfig:
-    """标注配置"""
-    provider: str = "openai"  # openai, deepseek
-    model: str = "gpt-4o-mini"
-    api_key: str = ""
-    base_url: Optional[str] = None
-    batch_size: int = 10  # 每批标注数量
-    max_retries: int = 3
-    retry_delay: float = 1.0
-    temperature: float = 0.3
+from configs.model_config import (
+    LLMProvider,
+    LLMConfig,
+    AnnotationAPIConfig,
+    DEFAULT_ANNOTATION_CONFIG
+)
 
 
 # 标注Prompt模板
@@ -119,29 +116,61 @@ BATCH_ANNOTATION_PROMPT = """你是数据标注专家。请批量分析以下文
 class DataAnnotator:
     """数据标注器"""
 
-    def __init__(self, config: AnnotationConfig):
-        self.config = config
+    def __init__(self, config: Optional[AnnotationAPIConfig] = None):
+        """
+        初始化标注器
 
-        # 初始化API客户端
+        Args:
+            config: 标注API配置，None则使用默认配置
+        """
+        self.config = config or DEFAULT_ANNOTATION_CONFIG
+
+        # 初始化主API客户端
         from openai import OpenAI
 
-        base_url = config.base_url
-        if config.provider == "deepseek" and not base_url:
-            base_url = "https://api.deepseek.com/v1"
-
-        self.client = OpenAI(
-            api_key=config.api_key,
-            base_url=base_url
+        self.primary_client = OpenAI(
+            api_key=self.config.primary_api_key,
+            base_url=self.config.primary_base_url
         )
+        self.primary_model = self.config.primary_model
 
-    def annotate_single(self, text: str) -> Optional[Dict]:
+        # 初始化备用API客户端
+        if self.config.fallback_api_key:
+            self.fallback_client = OpenAI(
+                api_key=self.config.fallback_api_key,
+                base_url=self.config.fallback_base_url
+            )
+            self.fallback_model = self.config.fallback_model
+        else:
+            self.fallback_client = None
+            self.fallback_model = None
+
+    @classmethod
+    def from_llm_config(cls, llm_config: LLMConfig) -> "DataAnnotator":
+        """从LLMConfig创建标注器"""
+        config = AnnotationAPIConfig(
+            primary_provider=llm_config.provider,
+            primary_model=llm_config.model,
+            primary_api_key=llm_config.api_key,
+            primary_base_url=llm_config.base_url,
+            temperature=0.3  # 标注用低温度
+        )
+        return cls(config)
+
+    def annotate_single(self, text: str, use_fallback: bool = False) -> Optional[Dict]:
         """标注单条文本"""
         prompt = ANNOTATION_PROMPT.format(text=text)
 
+        client = self.fallback_client if use_fallback else self.primary_client
+        model = self.fallback_model if use_fallback else self.primary_model
+
+        if client is None:
+            raise ValueError("未配置API客户端")
+
         for attempt in range(self.config.max_retries):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.config.model,
+                response = client.chat.completions.create(
+                    model=model,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=self.config.temperature,
                     response_format={"type": "json_object"}
@@ -149,16 +178,17 @@ class DataAnnotator:
 
                 result = json.loads(response.choices[0].message.content)
                 result["text"] = text
+                result["annotator"] = model
                 return result
 
             except Exception as e:
                 print(f"标注失败 (尝试 {attempt + 1}/{self.config.max_retries}): {e}")
                 if attempt < self.config.max_retries - 1:
-                    time.sleep(self.config.retry_delay * (attempt + 1))
+                    time.sleep(1.0 * (attempt + 1))
 
         return None
 
-    def annotate_batch(self, texts: List[str]) -> List[Optional[Dict]]:
+    def annotate_batch(self, texts: List[str], use_fallback: bool = False) -> List[Optional[Dict]]:
         """批量标注"""
         # 格式化文本列表
         formatted_texts = "\n".join([
@@ -167,10 +197,16 @@ class DataAnnotator:
 
         prompt = BATCH_ANNOTATION_PROMPT.format(texts=formatted_texts)
 
+        client = self.fallback_client if use_fallback else self.primary_client
+        model = self.fallback_model if use_fallback else self.primary_model
+
+        if client is None:
+            raise ValueError("未配置API客户端")
+
         for attempt in range(self.config.max_retries):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.config.model,
+                response = client.chat.completions.create(
+                    model=model,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=self.config.temperature,
                     response_format={"type": "json_object"}
@@ -192,21 +228,22 @@ class DataAnnotator:
                     else:
                         raise ValueError("无法解析JSON")
 
-                # 添加原始文本
+                # 添加原始文本和标注器信息
                 for i, result in enumerate(results):
                     if i < len(texts):
                         result["text"] = texts[i]
+                        result["annotator"] = model
 
                 return results
 
             except Exception as e:
                 print(f"批量标注失败 (尝试 {attempt + 1}/{self.config.max_retries}): {e}")
                 if attempt < self.config.max_retries - 1:
-                    time.sleep(self.config.retry_delay * (attempt + 1))
+                    time.sleep(1.0 * (attempt + 1))
 
         # 批量失败，回退到单条标注
         print("批量标注失败，回退到单条标注...")
-        return [self.annotate_single(text) for text in texts]
+        return [self.annotate_single(text, use_fallback) for text in texts]
 
     def annotate_file(
         self,
@@ -328,6 +365,9 @@ def compare_providers(
     texts: List[str],
     openai_key: str,
     deepseek_key: str,
+    openai_model: str = "gpt-5",
+    deepseek_model: str = "deepseek-chat",
+    openai_base_url: str = "https://api.openai.com/v1",
     output_path: str = "comparison_results.json"
 ):
     """
@@ -337,25 +377,32 @@ def compare_providers(
         texts: 测试文本列表
         openai_key: OpenAI API密钥
         deepseek_key: DeepSeek API密钥
+        openai_model: OpenAI模型名称
+        deepseek_model: DeepSeek模型名称
+        openai_base_url: OpenAI API Base URL
         output_path: 输出路径
     """
     results = []
 
-    # OpenAI GPT-4o-mini
-    print("\n标注中: GPT-4o-mini")
-    gpt_annotator = DataAnnotator(AnnotationConfig(
-        provider="openai",
-        model="gpt-4o-mini",
-        api_key=openai_key
-    ))
+    # OpenAI/GPT-5
+    print(f"\n标注中: {openai_model}")
+    gpt_config = AnnotationAPIConfig(
+        primary_provider=LLMProvider.OPENAI,
+        primary_model=openai_model,
+        primary_api_key=openai_key,
+        primary_base_url=openai_base_url
+    )
+    gpt_annotator = DataAnnotator(gpt_config)
 
     # DeepSeek
-    print("\n标注中: DeepSeek")
-    deepseek_annotator = DataAnnotator(AnnotationConfig(
-        provider="deepseek",
-        model="deepseek-chat",
-        api_key=deepseek_key
-    ))
+    print(f"\n标注中: {deepseek_model}")
+    deepseek_config = AnnotationAPIConfig(
+        primary_provider=LLMProvider.DEEPSEEK,
+        primary_model=deepseek_model,
+        primary_api_key=deepseek_key,
+        primary_base_url="https://api.deepseek.com/v1"
+    )
+    deepseek_annotator = DataAnnotator(deepseek_config)
 
     for text in tqdm(texts, desc="对比标注"):
         gpt_result = gpt_annotator.annotate_single(text)
@@ -365,8 +412,8 @@ def compare_providers(
 
         results.append({
             "text": text,
-            "gpt4o_mini": gpt_result,
-            "deepseek": deepseek_result,
+            openai_model: gpt_result,
+            deepseek_model: deepseek_result,
             "agreement": {
                 "emotion": gpt_result.get("emotion") == deepseek_result.get("emotion") if gpt_result and deepseek_result else False,
                 "behavior": gpt_result.get("behavior") == deepseek_result.get("behavior") if gpt_result and deepseek_result else False
@@ -384,6 +431,8 @@ def compare_providers(
     print("\n" + "=" * 40)
     print("对比结果")
     print("=" * 40)
+    print(f"模型A: {openai_model}")
+    print(f"模型B: {deepseek_model}")
     print(f"情绪一致性: {emotion_agree}/{len(results)} ({emotion_agree/len(results)*100:.1f}%)")
     print(f"行为一致性: {behavior_agree}/{len(results)} ({behavior_agree/len(results)*100:.1f}%)")
     print(f"结果保存到: {output_path}")
@@ -398,9 +447,11 @@ def main():
     annotate_parser.add_argument("--input", type=str, required=True, help="输入文件")
     annotate_parser.add_argument("--output", type=str, required=True, help="输出文件")
     annotate_parser.add_argument("--provider", type=str, default="openai",
-                                choices=["openai", "deepseek"], help="API提供商")
-    annotate_parser.add_argument("--model", type=str, default=None, help="模型名称")
-    annotate_parser.add_argument("--api_key", type=str, required=True, help="API密钥")
+                                choices=["openai", "deepseek", "custom"], help="API提供商")
+    annotate_parser.add_argument("--model", type=str, default="gpt-5", help="模型名称")
+    annotate_parser.add_argument("--api_key", type=str, default=None,
+                                help="API密钥（也可通过环境变量设置）")
+    annotate_parser.add_argument("--base_url", type=str, default=None, help="API Base URL")
     annotate_parser.add_argument("--batch_size", type=int, default=10, help="批次大小")
     annotate_parser.add_argument("--no_batch", action="store_true", help="禁用批量标注")
 
@@ -409,15 +460,36 @@ def main():
     compare_parser.add_argument("--input", type=str, required=True, help="测试文本文件")
     compare_parser.add_argument("--output", type=str, default="comparison.json", help="输出文件")
     compare_parser.add_argument("--openai_key", type=str, required=True, help="OpenAI API密钥")
+    compare_parser.add_argument("--openai_model", type=str, default="gpt-5", help="OpenAI模型")
+    compare_parser.add_argument("--openai_base_url", type=str, default="https://api.openai.com/v1",
+                               help="OpenAI API Base URL")
     compare_parser.add_argument("--deepseek_key", type=str, required=True, help="DeepSeek API密钥")
+    compare_parser.add_argument("--deepseek_model", type=str, default="deepseek-chat", help="DeepSeek模型")
 
     args = parser.parse_args()
 
     if args.command == "annotate":
-        config = AnnotationConfig(
-            provider=args.provider,
-            model=args.model or ("gpt-4o-mini" if args.provider == "openai" else "deepseek-chat"),
-            api_key=args.api_key,
+        # 确定provider枚举
+        provider_map = {
+            "openai": LLMProvider.OPENAI,
+            "deepseek": LLMProvider.DEEPSEEK,
+            "custom": LLMProvider.CUSTOM
+        }
+        provider = provider_map.get(args.provider, LLMProvider.OPENAI)
+
+        # 设置默认base_url
+        base_url = args.base_url
+        if base_url is None:
+            if provider == LLMProvider.OPENAI:
+                base_url = "https://api.openai.com/v1"
+            elif provider == LLMProvider.DEEPSEEK:
+                base_url = "https://api.deepseek.com/v1"
+
+        config = AnnotationAPIConfig(
+            primary_provider=provider,
+            primary_model=args.model,
+            primary_api_key=args.api_key,
+            primary_base_url=base_url,
             batch_size=args.batch_size
         )
 
@@ -441,6 +513,9 @@ def main():
             texts=texts[:100],  # 限制100条
             openai_key=args.openai_key,
             deepseek_key=args.deepseek_key,
+            openai_model=args.openai_model,
+            deepseek_model=args.deepseek_model,
+            openai_base_url=args.openai_base_url,
             output_path=args.output
         )
 
