@@ -34,8 +34,8 @@ def _resolve_api_key(env_var: str, json_value: str) -> Optional[str]:
     return os.environ.get(env_var) or json_value or None
 
 
-def load_llm_config(cfg: dict) -> LLMConfig:
-    llm = cfg.get("llm", {})
+def _load_llm_from_dict(llm: dict) -> LLMConfig:
+    """从一个 LLM 配置字典加载 LLMConfig（llm / llm_secondary 共用）"""
     provider_str = llm.get("provider", "custom").lower()
     provider = LLMProvider(provider_str)
 
@@ -65,6 +65,18 @@ def load_llm_config(cfg: dict) -> LLMConfig:
         retry_max_delay=llm.get("retry_max_delay", 60.0),
         use_responses_api=llm.get("use_responses_api", False),
     )
+
+
+def load_llm_config(cfg: dict) -> LLMConfig:
+    return _load_llm_from_dict(cfg.get("llm", {}))
+
+
+def load_llm_secondary_config(cfg: dict) -> Optional[LLMConfig]:
+    """加载副 LLM 配置（群聊廉价模型），不存在则返回 None"""
+    section = cfg.get("llm_secondary")
+    if not section:
+        return None
+    return _load_llm_from_dict(section)
 
 
 def load_personality_config(cfg: dict) -> PersonalityConfig:
@@ -196,8 +208,10 @@ class AppConfig:
         device: str,
         attention_intensity_threshold: float,
         attention_cooldown_seconds: int,
+        llm_secondary: Optional[LLMConfig] = None,
     ):
         self.llm = llm
+        self.llm_secondary = llm_secondary
         self.personality = personality
         self.memory = memory
         self.emotion_prompts = emotion_prompts
@@ -233,6 +247,7 @@ class AppConfig:
 
         return cls(
             llm=load_llm_config(cfg),
+            llm_secondary=load_llm_secondary_config(cfg),
             personality=load_personality_config(cfg),
             memory=load_memory_config(cfg),
             emotion_prompts=load_emotion_prompt_config(cfg),

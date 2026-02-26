@@ -18,6 +18,7 @@ import os
 import torch
 import json
 import time
+from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -50,6 +51,12 @@ from configs.model_config import (
 )
 from configs.config_loader import AppConfig
 from src.memory_manager import HierarchicalMemoryManager
+
+
+class ChatMode(Enum):
+    """对话模式：决定 LLM 路由策略"""
+    PRIVATE = "private"   # 私聊：始终用主 LLM (Claude)
+    GROUP = "group"       # 群聊：BERT 路由，默认副 LLM，必要时升级到主 LLM
 
 
 @dataclass
@@ -345,6 +352,21 @@ class LLMClient:
         return cls(config)
 
 
+# 情绪 → max_tokens 权重（基于对话场景的合理回复长度）
+_EMOTION_TOKEN_WEIGHTS = {
+    "neutral":    0.6,   # 日常闲聊，简短
+    "joy":        0.8,   # 开心，自然回应不用太长
+    "excitement": 0.9,   # 兴奋，稍微展开
+    "sadness":    1.2,   # 安慰需要更多话
+    "fear":       1.1,   # 给安全感，适当展开
+    "anger":      1.0,   # 认可情绪，不长篇大论
+    "disgust":    0.8,   # 简短回应
+    "surprise":   1.0,   # 视情况
+    "tenderness": 1.0,   # 温暖回应
+    "curiosity":  1.4,   # 好奇心需要详细回答
+}
+
+
 class NeuroLikePipeline:
     """
     完整的Neuro-Like推理Pipeline
@@ -361,6 +383,7 @@ class NeuroLikePipeline:
         small_model_path: str,
         personality: PersonalityConfig,
         llm_config: Optional[LLMConfig] = None,
+        llm_secondary_config: Optional[LLMConfig] = None,
         memory_config: Optional[MemoryConfig] = None,
         emotion_prompt_config: Optional[EmotionPromptConfig] = None,
         # 向后兼容的参数
@@ -376,13 +399,10 @@ class NeuroLikePipeline:
         Args:
             small_model_path: 小模型检查点路径
             personality: 人格配置
-            llm_config: LLM配置对象（推荐使用）
+            llm_config: 主 LLM 配置（Claude，私聊 + 群聊升级）
+            llm_secondary_config: 副 LLM 配置（DeepSeek 等廉价模型，群聊默认）
             memory_config: 记忆系统配置
             emotion_prompt_config: BERT 输出 → Prompt 指令映射配置
-            llm_provider: LLM提供商（向后兼容）
-            llm_api_key: API密钥（向后兼容）
-            llm_model: 模型名称（向后兼容）
-            llm_base_url: API Base URL（向后兼容）
             device: 运行设备
         """
         self.personality = personality
@@ -420,6 +440,16 @@ class NeuroLikePipeline:
                 "或通过 llm_config 参数传入 LLMConfig 对象。"
             )
 
+        # 副 LLM 客户端（群聊廉价模型，可选）
+        if llm_secondary_config is not None:
+            logger.info(
+                f"初始化副 LLM 客户端 "
+                f"({llm_secondary_config.provider.value}: {llm_secondary_config.model})"
+            )
+            self.llm_client_secondary = LLMClient(llm_secondary_config)
+        else:
+            self.llm_client_secondary = None
+
         # 记忆管理器
         if memory_config is not None:
             self.memory = HierarchicalMemoryManager(
@@ -444,6 +474,7 @@ class NeuroLikePipeline:
             small_model_path=app_cfg.small_model_checkpoint,
             personality=app_cfg.personality,
             llm_config=app_cfg.llm,
+            llm_secondary_config=app_cfg.llm_secondary,
             memory_config=app_cfg.memory,
             emotion_prompt_config=app_cfg.emotion_prompts,
             device=app_cfg.device,
@@ -552,10 +583,88 @@ class NeuroLikePipeline:
 
         return "。".join(parts) if parts else ""
 
+    def _adaptive_max_tokens(self, emotion_analysis: Optional[Dict],
+                             client: Optional["LLMClient"] = None) -> int:
+        """
+        根据 BERT 情绪分析动态调整 max_tokens。
+
+        actual_max_tokens = config.max_tokens × emotion_weight [× intensity_boost]
+        """
+        c = client or self.llm_client
+        base = c.config.max_tokens
+
+        if emotion_analysis is None:
+            return base
+
+        emotion = emotion_analysis["emotion"]["primary"]
+        intensity = emotion_analysis["emotion"]["intensity"]
+
+        weight = _EMOTION_TOKEN_WEIGHTS.get(emotion, 1.0)
+
+        # 高强度情绪适当增加回复空间
+        if intensity >= 0.7:
+            weight += 0.15
+
+        result = max(100, int(base * weight))
+        logger.debug(
+            f"adaptive max_tokens: base={base} × {weight:.2f} "
+            f"(emotion={emotion} intensity={intensity:.2f}) = {result}"
+        )
+        return result
+
+    # ── 群聊 LLM 路由 ────────────────────────────────────────────────────
+
+    # 需要升级到主 LLM 的情绪（需要细腻情感处理）
+    _ESCALATE_EMOTIONS = frozenset({"sadness", "fear", "anger", "tenderness"})
+
+    def _route_llm_client(
+        self,
+        chat_mode: ChatMode,
+        emotion_analysis: Optional[Dict],
+        is_mentioned: bool,
+    ) -> "LLMClient":
+        """
+        根据对话模式和 BERT 分析选择 LLM 客户端。
+
+        私聊：始终用主 LLM（Claude）
+        群聊：默认副 LLM（DeepSeek），以下情况升级到主 LLM：
+          - 被 @ 提及（直接对话，用户期望高质量回复）
+          - 高置信度的强情绪（需要细腻的情感处理）
+          - 副 LLM 不可用时回退到主 LLM
+        """
+        # 私聊 or 没有副 LLM → 主 LLM
+        if chat_mode == ChatMode.PRIVATE or self.llm_client_secondary is None:
+            return self.llm_client
+
+        # 群聊：被 @ → 主 LLM
+        if is_mentioned:
+            logger.debug("路由: @提及 → 主 LLM")
+            return self.llm_client
+
+        # 群聊：检查 BERT 是否检测到需要升级的强情绪
+        if emotion_analysis and self.emotion_prompt_config:
+            emotion = emotion_analysis["emotion"]["primary"]
+            bert_prob = emotion_analysis["emotion"].get("primary_prob", 0.0)
+            cfg = self.emotion_prompt_config
+            reliability = cfg.emotion_reliability.get(emotion, 0.7)
+            eff = bert_prob * reliability
+            strong_thr = cfg.confidence_thresholds.get("strong", 0.5)
+
+            if emotion in self._ESCALATE_EMOTIONS and eff >= strong_thr:
+                logger.debug(
+                    f"路由: 强情绪 {emotion}(eff={eff:.2f}) → 主 LLM"
+                )
+                return self.llm_client
+
+        # 群聊默认 → 副 LLM
+        logger.debug("路由: 群聊默认 → 副 LLM")
+        return self.llm_client_secondary
+
     def generate_response(self, user_input: str,
                           recalled_context: str = "",
                           history: Optional[List[Dict]] = None,
-                          emotion_analysis: Optional[Dict] = None) -> str:
+                          emotion_analysis: Optional[Dict] = None,
+                          client: Optional["LLMClient"] = None) -> str:
         """
         使用大模型生成回复。
 
@@ -564,12 +673,16 @@ class NeuroLikePipeline:
             recalled_context: L2/L3/L4 召回（进 system prompt）
             history: L1 原文 messages 列表（进 messages 数组）
             emotion_analysis: BERT 情绪分析结果（注入 system prompt）
+            client: 指定 LLM 客户端（路由选择的结果）
         """
+        c = client or self.llm_client
         system_prompt = self.build_system_prompt(recalled_context, emotion_analysis)
-        return self.llm_client.generate(
+        max_tokens = self._adaptive_max_tokens(emotion_analysis, c)
+        return c.generate(
             system_prompt=system_prompt,
             user_input=user_input,
             history=history,
+            max_tokens=max_tokens,
         )
 
     def should_respond(self, emotion_behavior: Dict, is_mentioned: bool = False) -> bool:
@@ -598,7 +711,8 @@ class NeuroLikePipeline:
         return False
 
     def chat(self, user_input: str, verbose: bool = False,
-             is_mentioned: bool = True) -> Dict:
+             is_mentioned: bool = True,
+             chat_mode: ChatMode = ChatMode.PRIVATE) -> Dict:
         """
         完整对话流程
 
@@ -606,6 +720,7 @@ class NeuroLikePipeline:
             user_input: 用户输入
             verbose: 是否输出详细信息
             is_mentioned: 是否被 @ 提及（群聊场景传入）
+            chat_mode: 对话模式（PRIVATE=私聊纯 Claude，GROUP=群聊 BERT 路由）
 
         Returns:
             {
@@ -656,12 +771,16 @@ class NeuroLikePipeline:
             recalled = self.memory.format_context(num_turns=5)
             history = None
 
-        # ── LLM 生成 ──────────────────────────────────────────────────────
+        # ── LLM 路由 + 生成 ──────────────────────────────────────────────
         response = None
+        routed_client = self._route_llm_client(
+            chat_mode, emotion_behavior, is_mentioned
+        )
         if respond:
             response = self.generate_response(
                 user_input, recalled, history,
                 emotion_analysis=emotion_behavior,
+                client=routed_client,
             )
 
         # ── 记忆写入（无论是否回复都记录，群聊静默观察也积累上下文）──────
@@ -681,8 +800,9 @@ class NeuroLikePipeline:
             "behavior": emotion_behavior["behavior"],
             "should_respond": respond,
             "debug_info": {
-                "model_provider": self.llm_client.provider.value,
-                "model_name": self.llm_client.model,
+                "model_provider": routed_client.provider.value,
+                "model_name": routed_client.model,
+                "chat_mode": chat_mode.value,
             },
         }
 
@@ -698,11 +818,22 @@ class NeuroLikePipeline:
         logger.info(f"对话历史已保存: {output_path}")
 
     def close(self):
-        """会话结束：触发 L2→L3 长期记忆写入（仅分级记忆模式有效）"""
+        """会话结束：写入长期记忆 + 关闭 Qdrant 连接"""
         if isinstance(self.memory, HierarchicalMemoryManager):
             logger.info("正在写入长期记忆...")
             self.memory.close_session()
             logger.info("长期记忆已保存。")
+
+            # 主动关闭 Qdrant 客户端，避免 Python 退出时 __del__ 报 ImportError
+            mem0 = getattr(self.memory, 'mem0', None)
+            if mem0:
+                for attr in ('vector_store', '_telemetry_vector_store'):
+                    vs = getattr(mem0, attr, None)
+                    if vs and hasattr(vs, 'client'):
+                        try:
+                            vs.client.close()
+                        except Exception:
+                            pass
 
 
 def interactive_chat(pipeline: NeuroLikePipeline):

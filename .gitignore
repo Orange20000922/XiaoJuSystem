@@ -43,3 +43,5 @@ Lib/
 neuro_like_system/data/
 #dataset
 data_set/
+#test
+test/
