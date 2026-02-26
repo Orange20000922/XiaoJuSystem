@@ -124,6 +124,25 @@ class PersonalityConfig:
         return len(self.to_embedding_vector())
 
 
+# ============== BERT 输出 → Prompt 指令映射配置 ==============
+@dataclass
+class EmotionPromptConfig:
+    """BERT 输出 → Prompt 指令映射配置"""
+    emotion_map: Dict[str, str] = field(default_factory=dict)
+    behavior_map: Dict[str, str] = field(default_factory=dict)
+    tone_map: Dict[str, str] = field(default_factory=dict)
+    intensity_levels: Dict[str, float] = field(
+        default_factory=lambda: {"low_max": 0.4, "high_min": 0.7}
+    )
+    # 每个情绪标签的 BERT 可靠度（F1），用于加权置信度
+    emotion_reliability: Dict[str, float] = field(default_factory=dict)
+    # effective_confidence = BERT_prob * reliability
+    # > strong → 注入确定性指令; > weak → 注入不确定指令; 否则跳过
+    confidence_thresholds: Dict[str, float] = field(
+        default_factory=lambda: {"strong": 0.5, "weak": 0.3}
+    )
+
+
 # ============== 模型配置 ==============
 @dataclass
 class EmotionModelConfig:

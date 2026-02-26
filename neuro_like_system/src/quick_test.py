@@ -28,9 +28,9 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.logger import logger
-from configs.config_loader import AppConfig
+from configs.config_loader import AppConfig, load_emotion_prompt_config
 from configs.model_config import MemoryConfig
-from src.inference_pipeline import LLMClient
+from src.inference_pipeline import LLMClient, NeuroLikePipeline
 from src.memory_manager import HierarchicalMemoryManager, count_tokens
 
 
@@ -163,6 +163,37 @@ def ping_api(config: AppConfig) -> bool:
     except Exception as e:
         logger.error(f"API 连通失败: {e}")
         return False
+
+
+def run_bert_test(pipeline: NeuroLikePipeline, messages: List[str], ep_cfg):
+    """完整 BERT+LLM pipeline 测试：显示情绪分析 + 注入指令 + 回复"""
+    SEP = "─" * 60
+    logger.info("=" * 60)
+    logger.info(f"BERT+LLM 联合测试，共 {len(messages)} 轮")
+    logger.info("=" * 60)
+
+    for i, msg in enumerate(messages, 1):
+        print(SEP)
+        print(f"用户: {msg}")
+
+        # 显示 BERT 分析 + 指令
+        if pipeline.small_model:
+            analysis = pipeline.analyze_emotion_behavior(msg)
+            e = analysis["emotion"]["primary"]
+            p = analysis["emotion"]["primary_prob"]
+            rel = ep_cfg.emotion_reliability.get(e, 0.7)
+            eff = p * rel
+            directive = pipeline._build_emotion_directives(analysis)
+            print(f"[BERT] {e}  prob={p:.2f}  eff={eff:.3f}  →  {directive or '(无指令)'}")
+
+        t0 = time.time()
+        result = pipeline.chat(msg)
+        elapsed = time.time() - t0
+
+        print(f"Neuro: {result['response']}")
+        print(f"[{elapsed:.1f}s]")
+
+    print(SEP)
 
 
 def run_conversation(pipeline: LightPipeline, messages: List[str]):
@@ -357,6 +388,8 @@ def main():
                         help="记忆测试时的保护区轮次数（默认12，测试建议2-3）")
     parser.add_argument("--cross-session", action="store_true",
                         help="跨 session 记忆召回测试（先跑第一轮对话写入 L3，再跑第二轮验证召回）")
+    parser.add_argument("--bert-test", action="store_true",
+                        help="完整 BERT+LLM 联合测试，显示情绪分析和注入指令")
     args = parser.parse_args()
 
     try:
@@ -368,6 +401,32 @@ def main():
 
     if args.ping:
         sys.exit(0 if ping_api(config) else 1)
+
+    # ── BERT+LLM 联合测试模式 ───────────────────────────────────────────────
+    if args.bert_test:
+        import os
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        test_messages = (
+            [m.strip() for m in args.msg.split("|||")] if args.msg else [
+                "哈哈哈哈笑死我了",
+                "好可怕，我一个人在家",
+                "这也太离谱了吧！！",
+                "呜呜呜好感动",
+                "你们觉得AI有没有意识？",
+                "气死我了，今天被坑了",
+                "大家好",
+                "666前方高能！",
+            ]
+        )
+        import json
+        with open(Path(args.config) if args.config else
+                  Path(__file__).parent.parent / "config.json", encoding="utf-8") as f:
+            raw_cfg = json.load(f)
+        ep_cfg = load_emotion_prompt_config(raw_cfg)
+
+        bert_pipeline = NeuroLikePipeline.from_config(args.config)
+        run_bert_test(bert_pipeline, test_messages, ep_cfg)
+        return
 
     if not ping_api(config):
         logger.error("API 不可用，终止测试")

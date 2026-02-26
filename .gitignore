@@ -41,3 +41,5 @@ Include/
 Lib/
 # memory context data
 neuro_like_system/data/
+#dataset
+data_set/

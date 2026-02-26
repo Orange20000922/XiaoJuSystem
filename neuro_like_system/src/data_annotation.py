@@ -21,6 +21,7 @@ from configs.model_config import (
     AnnotationAPIConfig,
     DEFAULT_ANNOTATION_CONFIG
 )
+from configs.config_loader import AppConfig
 
 
 # 标注Prompt模板
@@ -157,15 +158,22 @@ class DataAnnotator:
         )
         return cls(config)
 
-    def annotate_single(self, text: str, use_fallback: bool = False) -> Optional[Dict]:
-        """标注单条文本"""
+    def annotate_single(self, text: str) -> Optional[Dict]:
+        """标注单条文本（primary 失败自动切换 fallback）"""
+        result = self._try_single(text, self.primary_client, self.primary_model)
+        if result is not None:
+            return result
+        if self.fallback_client:
+            print(f"  Primary ({self.primary_model}) 失败，切换 fallback ({self.fallback_model})...")
+            return self._try_single(text, self.fallback_client, self.fallback_model)
+        return None
+
+    def _try_single(self, text: str, client, model: str) -> Optional[Dict]:
+        """用指定 client/model 标注单条，含重试"""
         prompt = ANNOTATION_PROMPT.format(text=text)
 
-        client = self.fallback_client if use_fallback else self.primary_client
-        model = self.fallback_model if use_fallback else self.primary_model
-
         if client is None:
-            raise ValueError("未配置API客户端")
+            return None
 
         for attempt in range(self.config.max_retries):
             try:
@@ -182,26 +190,36 @@ class DataAnnotator:
                 return result
 
             except Exception as e:
-                print(f"标注失败 (尝试 {attempt + 1}/{self.config.max_retries}): {e}")
+                print(f"标注失败 [{model}] (尝试 {attempt + 1}/{self.config.max_retries}): {e}")
                 if attempt < self.config.max_retries - 1:
                     time.sleep(1.0 * (attempt + 1))
 
         return None
 
-    def annotate_batch(self, texts: List[str], use_fallback: bool = False) -> List[Optional[Dict]]:
-        """批量标注"""
-        # 格式化文本列表
+    def annotate_batch(self, texts: List[str]) -> List[Optional[Dict]]:
+        """批量标注（primary 失败自动切换 fallback，批量全部失败回退到逐条）"""
+        results = self._try_batch(texts, self.primary_client, self.primary_model)
+        if results is not None:
+            return results
+        if self.fallback_client:
+            print(f"  Primary ({self.primary_model}) 批量失败，切换 fallback ({self.fallback_model})...")
+            results = self._try_batch(texts, self.fallback_client, self.fallback_model)
+            if results is not None:
+                return results
+        # 批量全部失败，回退到逐条（逐条内部也会走 primary→fallback）
+        print("批量标注失败，回退到逐条标注...")
+        return [self.annotate_single(text) for text in texts]
+
+    def _try_batch(self, texts: List[str], client, model: str) -> Optional[List[Optional[Dict]]]:
+        """用指定 client/model 批量标注，含重试。成功返回 list，失败返回 None。"""
         formatted_texts = "\n".join([
             f"{i}. {text}" for i, text in enumerate(texts)
         ])
 
         prompt = BATCH_ANNOTATION_PROMPT.format(texts=formatted_texts)
 
-        client = self.fallback_client if use_fallback else self.primary_client
-        model = self.fallback_model if use_fallback else self.primary_model
-
         if client is None:
-            raise ValueError("未配置API客户端")
+            return None
 
         for attempt in range(self.config.max_retries):
             try:
@@ -237,13 +255,11 @@ class DataAnnotator:
                 return results
 
             except Exception as e:
-                print(f"批量标注失败 (尝试 {attempt + 1}/{self.config.max_retries}): {e}")
+                print(f"批量标注失败 [{model}] (尝试 {attempt + 1}/{self.config.max_retries}): {e}")
                 if attempt < self.config.max_retries - 1:
                     time.sleep(1.0 * (attempt + 1))
 
-        # 批量失败，回退到单条标注
-        print("批量标注失败，回退到单条标注...")
-        return [self.annotate_single(text, use_fallback) for text in texts]
+        return None
 
     def annotate_file(
         self,
@@ -440,15 +456,19 @@ def compare_providers(
 
 def main():
     parser = argparse.ArgumentParser(description="数据标注工具")
+    parser.add_argument("--config", type=str, default=None,
+                        help="config.json 路径（未指定 CLI 参数时从中读取标注配置）")
     subparsers = parser.add_subparsers(dest="command", help="命令")
 
     # 标注命令
     annotate_parser = subparsers.add_parser("annotate", help="标注数据")
     annotate_parser.add_argument("--input", type=str, required=True, help="输入文件")
     annotate_parser.add_argument("--output", type=str, required=True, help="输出文件")
-    annotate_parser.add_argument("--provider", type=str, default="openai",
-                                choices=["openai", "deepseek", "custom"], help="API提供商")
-    annotate_parser.add_argument("--model", type=str, default="gpt-5", help="模型名称")
+    annotate_parser.add_argument("--provider", type=str, default=None,
+                                choices=["openai", "deepseek", "custom"],
+                                help="API提供商（默认从 config.json 读取）")
+    annotate_parser.add_argument("--model", type=str, default=None,
+                                help="模型名称（默认从 config.json 读取）")
     annotate_parser.add_argument("--api_key", type=str, default=None,
                                 help="API密钥（也可通过环境变量设置）")
     annotate_parser.add_argument("--base_url", type=str, default=None, help="API Base URL")
@@ -468,29 +488,42 @@ def main():
 
     args = parser.parse_args()
 
+    # 从 config.json 加载标注默认配置
+    try:
+        app_cfg = AppConfig.load(args.config)
+        ann_defaults = app_cfg.annotation
+    except FileNotFoundError:
+        ann_defaults = AnnotationAPIConfig()
+
     if args.command == "annotate":
-        # 确定provider枚举
+        # CLI 参数覆盖 config.json 值
         provider_map = {
             "openai": LLMProvider.OPENAI,
             "deepseek": LLMProvider.DEEPSEEK,
             "custom": LLMProvider.CUSTOM
         }
-        provider = provider_map.get(args.provider, LLMProvider.OPENAI)
+        provider = provider_map.get(args.provider, ann_defaults.primary_provider) \
+            if args.provider else ann_defaults.primary_provider
 
-        # 设置默认base_url
+        model = args.model or ann_defaults.primary_model
+        api_key = args.api_key or ann_defaults.primary_api_key
+
         base_url = args.base_url
         if base_url is None:
-            if provider == LLMProvider.OPENAI:
-                base_url = "https://api.openai.com/v1"
-            elif provider == LLMProvider.DEEPSEEK:
-                base_url = "https://api.deepseek.com/v1"
+            base_url = ann_defaults.primary_base_url
 
         config = AnnotationAPIConfig(
             primary_provider=provider,
-            primary_model=args.model,
-            primary_api_key=args.api_key,
+            primary_model=model,
+            primary_api_key=api_key,
             primary_base_url=base_url,
-            batch_size=args.batch_size
+            fallback_provider=ann_defaults.fallback_provider,
+            fallback_model=ann_defaults.fallback_model,
+            fallback_api_key=ann_defaults.fallback_api_key,
+            fallback_base_url=ann_defaults.fallback_base_url,
+            batch_size=args.batch_size,
+            temperature=ann_defaults.temperature,
+            max_retries=ann_defaults.max_retries,
         )
 
         annotator = DataAnnotator(config)

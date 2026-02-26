@@ -8,7 +8,7 @@ import json
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from transformers import AutoTokenizer, get_linear_schedule_with_warmup
 from tqdm import tqdm
 from pathlib import Path
@@ -51,7 +51,7 @@ class Trainer:
 
         # 混合精度训练
         self.use_fp16 = config.fp16 and device == "cuda"
-        self.scaler = GradScaler() if self.use_fp16 else None
+        self.scaler = GradScaler("cuda") if self.use_fp16 else None
 
         # 梯度累积
         self.gradient_accumulation_steps = getattr(config, 'gradient_accumulation_steps', 1)
@@ -94,7 +94,7 @@ class Trainer:
 
             # 前向传播 (混合精度)
             if self.use_fp16:
-                with autocast():
+                with autocast("cuda"):
                     output = self.model(
                         input_ids=batch["input_ids"],
                         attention_mask=batch["attention_mask"],
@@ -167,7 +167,7 @@ class Trainer:
             batch = {k: v.to(self.device) for k, v in batch.items()}
 
             if self.use_fp16:
-                with autocast():
+                with autocast("cuda"):
                     output = self.model(
                         input_ids=batch["input_ids"],
                         attention_mask=batch["attention_mask"],
@@ -309,6 +309,11 @@ def main():
     parser.add_argument("--fp16", action="store_true", default=True, help="使用混合精度训练")
     parser.add_argument("--no_fp16", action="store_false", dest="fp16", help="禁用混合精度")
     parser.add_argument("--low_vram", action="store_true", help="8GB显存优化模式")
+    parser.add_argument("--emotion_weight", type=float, default=1.0, help="情绪分类 loss 权重")
+    parser.add_argument("--intensity_weight", type=float, default=0.5, help="强度回归 loss 权重")
+    parser.add_argument("--behavior_weight", type=float, default=1.0, help="行为分类 loss 权重")
+    parser.add_argument("--tone_weight", type=float, default=0.5, help="语气分类 loss 权重")
+    parser.add_argument("--val_split", type=float, default=0.1, help="验证集比例 (无 --val_data 时自动划分)")
 
     args = parser.parse_args()
 
@@ -328,6 +333,12 @@ def main():
             fp16=args.fp16
         )
 
+    # 覆盖 loss 权重
+    config.emotion_loss_weight = args.emotion_weight
+    config.intensity_loss_weight = args.intensity_weight
+    config.behavior_loss_weight = args.behavior_weight
+    config.tone_loss_weight = args.tone_weight
+
     # 创建模型
     print("创建模型...")
     model, tokenizer = create_joint_model(config)
@@ -335,18 +346,19 @@ def main():
 
     # 创建数据加载器
     print("加载数据...")
-    train_loader = create_dataloader(
-        data_path=args.train_data,
-        tokenizer=tokenizer,
-        personality=DEFAULT_PERSONALITY,
-        batch_size=config.batch_size,
-        max_length=config.max_length,
-        shuffle=True,
-        num_workers=args.num_workers
-    )
 
     val_loader = None
     if args.val_data:
+        # 用户提供了独立验证集
+        train_loader = create_dataloader(
+            data_path=args.train_data,
+            tokenizer=tokenizer,
+            personality=DEFAULT_PERSONALITY,
+            batch_size=config.batch_size,
+            max_length=config.max_length,
+            shuffle=True,
+            num_workers=args.num_workers
+        )
         val_loader = create_dataloader(
             data_path=args.val_data,
             tokenizer=tokenizer,
@@ -355,6 +367,34 @@ def main():
             max_length=config.max_length,
             shuffle=False,
             num_workers=args.num_workers
+        )
+    else:
+        # 自动划分训练/验证集
+        from data.dataset import EmotionBehaviorDataset
+        from torch.utils.data import random_split
+
+        full_dataset = EmotionBehaviorDataset(
+            data_path=args.train_data,
+            tokenizer=tokenizer,
+            personality=DEFAULT_PERSONALITY,
+            max_length=config.max_length,
+            is_training=True,
+        )
+        val_size = int(len(full_dataset) * args.val_split)
+        train_size = len(full_dataset) - val_size
+        train_ds, val_ds = random_split(
+            full_dataset, [train_size, val_size],
+            generator=torch.Generator().manual_seed(42),
+        )
+        print(f"自动划分: 训练 {train_size} / 验证 {val_size}")
+
+        train_loader = DataLoader(
+            train_ds, batch_size=config.batch_size,
+            shuffle=True, num_workers=args.num_workers, pin_memory=True,
+        )
+        val_loader = DataLoader(
+            val_ds, batch_size=config.batch_size,
+            shuffle=False, num_workers=args.num_workers, pin_memory=True,
         )
 
     # 训练

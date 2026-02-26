@@ -1,0 +1,214 @@
+2026-02-27 01:29:58.230 | INFO     | __main__:main:397 - 配置加载成功: provider=anthropic model=claude-sonnet-4-6
+2026-02-27 01:29:58.231 | INFO     | src.inference_pipeline:from_config:431 - 加载配置: AppConfig(
+  llm=anthropic:claude-sonnet-4-6,
+  personality=Neuro,
+  device=cpu,
+  context_window=400000
+)
+2026-02-27 01:29:58.231 | INFO     | src.inference_pipeline:__init__:383 - 加载小模型...
+2026-02-27 01:32:04.267 | INFO     | __main__:main:397 - 配置加载成功: provider=anthropic model=claude-sonnet-4-6
+2026-02-27 01:32:04.268 | INFO     | src.inference_pipeline:from_config:431 - 加载配置: AppConfig(
+  llm=anthropic:claude-sonnet-4-6,
+  personality=Neuro,
+  device=cpu,
+  context_window=400000
+)
+2026-02-27 01:32:04.270 | INFO     | src.inference_pipeline:__init__:383 - 加载小模型...
+2026-02-27 01:32:05.205 | WARNING  | src.inference_pipeline:__init__:390 - 小模型加载失败，进入纯 LLM 模式: Weights only load failed. This file can still be loaded, to do so you have two options, [1mdo those steps only if you trust the source of the checkpoint[0m. 
+	(1) In PyTorch 2.6, we changed the default value of the `weights_only` argument in `torch.load` from `False` to `True`. Re-running `torch.load` with `weights_only` set to `False` will likely succeed, but it can result in arbitrary code execution. Do it only if you got the file from a trusted source.
+	(2) Alternatively, to load with `weights_only=True` please check the recommended steps in the following error message.
+	WeightsUnpickler error: Unsupported global: GLOBAL configs.model_config.JointModelConfigLowVRAM was not an allowed global by default. Please use `torch.serialization.add_safe_globals([configs.model_config.JointModelConfigLowVRAM])` or the `torch.serialization.safe_globals([configs.model_config.JointModelConfigLowVRAM])` context manager to allowlist this global if you trust this class/function.
+
+Check the documentation of torch.load to learn more about types accepted by default with weights_only https://pytorch.org/docs/stable/generated/torch.load.html.
+2026-02-27 01:32:05.273 | INFO     | src.inference_pipeline:__init__:396 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 01:32:12.719 | INFO     | __main__:run_bert_test:171 - ============================================================
+2026-02-27 01:32:12.719 | INFO     | __main__:run_bert_test:172 - BERT+LLM 联合测试，共 8 轮
+2026-02-27 01:32:12.719 | INFO     | __main__:run_bert_test:173 - ============================================================
+2026-02-27 01:32:12.719 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:32:12.945 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 0/400000 tokens (0.0%) | 保护区 0/12 轮 | trigger=300000 L1轮次=0
+2026-02-27 01:32:12.945 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:32:20.332 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=34 chars
+2026-02-27 01:32:20.539 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:32:20.678 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 42/400000 tokens (0.0%) | 保护区 1/12 轮 | trigger=300000 L1轮次=1
+2026-02-27 01:32:20.678 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:32:26.198 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=40 chars
+2026-02-27 01:32:26.199 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:32:26.348 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 82/400000 tokens (0.0%) | 保护区 2/12 轮 | trigger=300000 L1轮次=2
+2026-02-27 01:32:26.350 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:32:31.511 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=63 chars
+2026-02-27 01:32:31.512 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:32:31.621 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 142/400000 tokens (0.0%) | 保护区 3/12 轮 | trigger=300000 L1轮次=3
+2026-02-27 01:32:31.621 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:32:36.150 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=80 chars
+2026-02-27 01:32:36.150 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:32:36.264 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 221/400000 tokens (0.1%) | 保护区 4/12 轮 | trigger=300000 L1轮次=4
+2026-02-27 01:32:36.264 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:32:44.626 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=268 chars
+2026-02-27 01:32:44.626 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:32:44.767 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 417/400000 tokens (0.1%) | 保护区 5/12 轮 | trigger=300000 L1轮次=5
+2026-02-27 01:32:44.767 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:32:46.503 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=6 chars
+2026-02-27 01:32:46.505 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:32:46.641 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 438/400000 tokens (0.1%) | 保护区 6/12 轮 | trigger=300000 L1轮次=6
+2026-02-27 01:32:46.641 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:32:51.496 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=52 chars
+2026-02-27 01:32:51.496 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:32:51.639 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 488/400000 tokens (0.1%) | 保护区 7/12 轮 | trigger=300000 L1轮次=7
+2026-02-27 01:32:51.639 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:32:58.012 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=69 chars
+2026-02-27 01:34:37.281 | INFO     | __main__:main:397 - 配置加载成功: provider=anthropic model=claude-sonnet-4-6
+2026-02-27 01:34:37.283 | INFO     | src.inference_pipeline:from_config:431 - 加载配置: AppConfig(
+  llm=anthropic:claude-sonnet-4-6,
+  personality=Neuro,
+  device=cpu,
+  context_window=400000
+)
+2026-02-27 01:34:37.283 | INFO     | src.inference_pipeline:__init__:383 - 加载小模型...
+2026-02-27 01:34:38.257 | WARNING  | src.inference_pipeline:__init__:390 - 小模型加载失败，进入纯 LLM 模式: Weights only load failed. This file can still be loaded, to do so you have two options, [1mdo those steps only if you trust the source of the checkpoint[0m. 
+	(1) In PyTorch 2.6, we changed the default value of the `weights_only` argument in `torch.load` from `False` to `True`. Re-running `torch.load` with `weights_only` set to `False` will likely succeed, but it can result in arbitrary code execution. Do it only if you got the file from a trusted source.
+	(2) Alternatively, to load with `weights_only=True` please check the recommended steps in the following error message.
+	WeightsUnpickler error: Unsupported global: GLOBAL configs.model_config.JointModelConfigLowVRAM was not an allowed global by default. Please use `torch.serialization.add_safe_globals([configs.model_config.JointModelConfigLowVRAM])` or the `torch.serialization.safe_globals([configs.model_config.JointModelConfigLowVRAM])` context manager to allowlist this global if you trust this class/function.
+
+Check the documentation of torch.load to learn more about types accepted by default with weights_only https://pytorch.org/docs/stable/generated/torch.load.html.
+2026-02-27 01:34:38.358 | INFO     | src.inference_pipeline:__init__:396 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 01:34:43.949 | INFO     | __main__:run_bert_test:171 - ============================================================
+2026-02-27 01:34:43.949 | INFO     | __main__:run_bert_test:172 - BERT+LLM 联合测试，共 8 轮
+2026-02-27 01:34:43.949 | INFO     | __main__:run_bert_test:173 - ============================================================
+2026-02-27 01:34:43.949 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:34:44.101 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 0/400000 tokens (0.0%) | 保护区 0/12 轮 | trigger=300000 L1轮次=0
+2026-02-27 01:34:44.101 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:34:46.824 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=16 chars
+2026-02-27 01:34:47.086 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:34:47.217 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 25/400000 tokens (0.0%) | 保护区 1/12 轮 | trigger=300000 L1轮次=1
+2026-02-27 01:34:47.217 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:34:51.906 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=40 chars
+2026-02-27 01:34:51.906 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:34:52.046 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 65/400000 tokens (0.0%) | 保护区 2/12 轮 | trigger=300000 L1轮次=2
+2026-02-27 01:34:52.046 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:34:58.759 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=32 chars
+2026-02-27 01:34:58.759 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:34:58.871 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 102/400000 tokens (0.0%) | 保护区 3/12 轮 | trigger=300000 L1轮次=3
+2026-02-27 01:34:58.871 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:35:04.929 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=46 chars
+2026-02-27 01:35:04.929 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:35:05.054 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 149/400000 tokens (0.0%) | 保护区 4/12 轮 | trigger=300000 L1轮次=4
+2026-02-27 01:35:05.055 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:35:21.816 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=306 chars
+2026-02-27 01:35:21.817 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:35:21.965 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 380/400000 tokens (0.1%) | 保护区 5/12 轮 | trigger=300000 L1轮次=5
+2026-02-27 01:35:21.965 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:35:27.153 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=6 chars
+2026-02-27 01:35:27.154 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:35:27.293 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 401/400000 tokens (0.1%) | 保护区 6/12 轮 | trigger=300000 L1轮次=6
+2026-02-27 01:35:27.295 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:35:32.377 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=6 chars
+2026-02-27 01:35:32.377 | DEBUG    | src.inference_pipeline:chat:630 - BERT 不可用，使用默认情绪值
+2026-02-27 01:35:32.522 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 415/400000 tokens (0.1%) | 保护区 7/12 轮 | trigger=300000 L1轮次=7
+2026-02-27 01:35:32.523 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:35:38.499 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=57 chars
+2026-02-27 01:36:39.201 | INFO     | __main__:main:397 - 配置加载成功: provider=anthropic model=claude-sonnet-4-6
+2026-02-27 01:36:39.204 | INFO     | src.inference_pipeline:from_config:431 - 加载配置: AppConfig(
+  llm=anthropic:claude-sonnet-4-6,
+  personality=Neuro,
+  device=cpu,
+  context_window=400000
+)
+2026-02-27 01:36:39.204 | INFO     | src.inference_pipeline:__init__:383 - 加载小模型...
+2026-02-27 01:36:40.414 | INFO     | src.inference_pipeline:_load_checkpoint:445 - 加载检查点: ./checkpoints/joint_model/best.pt
+2026-02-27 01:36:40.414 | INFO     | src.inference_pipeline:_load_checkpoint:449 -   验证损失: 0.9380
+2026-02-27 01:36:40.414 | INFO     | src.inference_pipeline:_load_checkpoint:451 -   情绪准确率: 68.23%
+2026-02-27 01:36:40.489 | INFO     | src.inference_pipeline:__init__:388 - 小模型加载成功
+2026-02-27 01:36:40.489 | INFO     | src.inference_pipeline:__init__:396 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 01:36:45.824 | INFO     | __main__:run_bert_test:171 - ============================================================
+2026-02-27 01:36:45.824 | INFO     | __main__:run_bert_test:172 - BERT+LLM 联合测试，共 8 轮
+2026-02-27 01:36:45.824 | INFO     | __main__:run_bert_test:173 - ============================================================
+2026-02-27 01:36:45.976 | DEBUG    | src.inference_pipeline:chat:616 - BERT 情绪=joy 强度=0.85 行为=share_experience
+2026-02-27 01:36:46.127 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 0/400000 tokens (0.0%) | 保护区 0/12 轮 | trigger=300000 L1轮次=0
+2026-02-27 01:36:46.128 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:36:52.442 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=19 chars
+2026-02-27 01:36:52.783 | DEBUG    | src.inference_pipeline:chat:616 - BERT 情绪=fear 强度=0.66 行为=share_experience
+2026-02-27 01:36:52.937 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 29/400000 tokens (0.0%) | 保护区 1/12 轮 | trigger=300000 L1轮次=1
+2026-02-27 01:36:52.937 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:36:57.089 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=38 chars
+2026-02-27 01:36:57.199 | DEBUG    | src.inference_pipeline:chat:616 - BERT 情绪=surprise 强度=0.78 行为=share_experience
+2026-02-27 01:36:57.345 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 67/400000 tokens (0.0%) | 保护区 2/12 轮 | trigger=300000 L1轮次=2
+2026-02-27 01:36:57.346 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:37:03.969 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=162 chars
+2026-02-27 01:37:04.080 | DEBUG    | src.inference_pipeline:chat:616 - BERT 情绪=tenderness 强度=0.78 行为=disagree
+2026-02-27 01:37:04.198 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 187/400000 tokens (0.0%) | 保护区 3/12 轮 | trigger=300000 L1轮次=3
+2026-02-27 01:37:04.198 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:37:09.695 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=57 chars
+2026-02-27 01:37:09.819 | DEBUG    | src.inference_pipeline:chat:616 - BERT 情绪=curiosity 强度=0.56 行为=share_experience
+2026-02-27 01:37:09.953 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 245/400000 tokens (0.1%) | 保护区 4/12 轮 | trigger=300000 L1轮次=4
+2026-02-27 01:37:09.954 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:37:20.882 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=377 chars
+2026-02-27 01:37:20.991 | DEBUG    | src.inference_pipeline:chat:616 - BERT 情绪=anger 强度=0.71 行为=share_experience
+2026-02-27 01:37:21.136 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 525/400000 tokens (0.1%) | 保护区 5/12 轮 | trigger=300000 L1轮次=5
+2026-02-27 01:37:21.136 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:37:25.623 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=10 chars
+2026-02-27 01:37:25.745 | DEBUG    | src.inference_pipeline:chat:616 - BERT 情绪=neutral 强度=0.44 行为=share_experience
+2026-02-27 01:37:25.900 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 548/400000 tokens (0.1%) | 保护区 6/12 轮 | trigger=300000 L1轮次=6
+2026-02-27 01:37:25.900 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:37:29.914 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=51 chars
+2026-02-27 01:37:30.021 | DEBUG    | src.inference_pipeline:chat:616 - BERT 情绪=excitement 强度=0.80 行为=share_experience
+2026-02-27 01:37:30.165 | DEBUG    | src.inference_pipeline:chat:643 - 记忆 593/400000 tokens (0.1%) | 保护区 7/12 轮 | trigger=300000 L1轮次=7
+2026-02-27 01:37:30.165 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:37:35.364 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=49 chars
+2026-02-27 01:43:01.435 | INFO     | __main__:main:397 - 配置加载成功: provider=anthropic model=claude-sonnet-4-6
+2026-02-27 01:43:01.436 | INFO     | src.inference_pipeline:from_config:442 - 加载配置: AppConfig(
+  llm=anthropic:claude-sonnet-4-6,
+  personality=Neuro,
+  device=cpu,
+  context_window=400000
+)
+2026-02-27 01:43:01.437 | INFO     | src.inference_pipeline:__init__:394 - 加载小模型...
+2026-02-27 01:43:02.607 | INFO     | src.inference_pipeline:_load_checkpoint:456 - 加载检查点: ./checkpoints/joint_model/best.pt
+2026-02-27 01:43:02.608 | INFO     | src.inference_pipeline:_load_checkpoint:460 -   验证损失: 0.9380
+2026-02-27 01:43:02.608 | INFO     | src.inference_pipeline:_load_checkpoint:462 -   情绪准确率: 68.23%
+2026-02-27 01:43:02.687 | INFO     | src.inference_pipeline:__init__:399 - 小模型加载成功
+2026-02-27 01:43:02.687 | INFO     | src.inference_pipeline:__init__:407 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 01:43:07.246 | INFO     | __main__:run_bert_test:171 - ============================================================
+2026-02-27 01:43:07.246 | INFO     | __main__:run_bert_test:172 - BERT+LLM 联合测试，共 3 轮
+2026-02-27 01:43:07.246 | INFO     | __main__:run_bert_test:173 - ============================================================
+2026-02-27 01:43:07.358 | DEBUG    | src.inference_pipeline:chat:627 - BERT 情绪=joy 强度=0.85 行为=share_experience
+2026-02-27 01:43:07.511 | DEBUG    | src.inference_pipeline:chat:654 - 记忆 0/400000 tokens (0.0%) | 保护区 0/12 轮 | trigger=300000 L1轮次=0
+2026-02-27 01:43:07.511 | DEBUG    | src.inference_pipeline:generate:175 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:43:19.411 | DEBUG    | src.inference_pipeline:generate:195 - LLM 响应成功 长度=16 chars
+2026-02-27 01:43:19.704 | DEBUG    | src.inference_pipeline:chat:627 - BERT 情绪=fear 强度=0.66 行为=share_experience
+2026-02-27 01:43:19.855 | DEBUG    | src.inference_pipeline:chat:654 - 记忆 25/400000 tokens (0.0%) | 保护区 1/12 轮 | trigger=300000 L1轮次=1
+2026-02-27 01:43:19.855 | DEBUG    | src.inference_pipeline:generate:175 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:43:24.762 | DEBUG    | src.inference_pipeline:generate:195 - LLM 响应成功 长度=38 chars
+2026-02-27 01:43:24.870 | DEBUG    | src.inference_pipeline:chat:627 - BERT 情绪=anger 强度=0.71 行为=share_experience
+2026-02-27 01:43:25.021 | DEBUG    | src.inference_pipeline:chat:654 - 记忆 63/400000 tokens (0.0%) | 保护区 2/12 轮 | trigger=300000 L1轮次=2
+2026-02-27 01:43:25.021 | DEBUG    | src.inference_pipeline:generate:175 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:43:29.265 | DEBUG    | src.inference_pipeline:generate:195 - LLM 响应成功 长度=10 chars
+2026-02-27 01:46:48.900 | INFO     | __main__:from_config:442 - 加载配置: AppConfig(
+  llm=anthropic:claude-sonnet-4-6,
+  personality=Neuro,
+  device=cpu,
+  context_window=400000
+)
+2026-02-27 01:46:48.901 | INFO     | __main__:__init__:394 - 加载小模型...
+2026-02-27 01:46:50.012 | INFO     | __main__:_load_checkpoint:456 - 加载检查点: ./checkpoints/joint_model/best.pt
+2026-02-27 01:46:50.013 | INFO     | __main__:_load_checkpoint:460 -   验证损失: 0.9380
+2026-02-27 01:46:50.013 | INFO     | __main__:_load_checkpoint:462 -   情绪准确率: 68.23%
+2026-02-27 01:46:50.075 | INFO     | __main__:__init__:399 - 小模型加载成功
+2026-02-27 01:46:50.075 | INFO     | __main__:__init__:407 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 01:47:05.985 | DEBUG    | __main__:chat:627 - BERT 情绪=neutral 强度=0.31 行为=share_experience
+2026-02-27 01:47:06.144 | DEBUG    | __main__:chat:654 - 记忆 0/400000 tokens (0.0%) | 保护区 0/12 轮 | trigger=300000 L1轮次=0
+2026-02-27 01:47:06.144 | DEBUG    | __main__:generate:175 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:47:15.485 | DEBUG    | __main__:generate:195 - LLM 响应成功 长度=61 chars
+2026-02-27 01:47:44.653 | DEBUG    | __main__:chat:627 - BERT 情绪=curiosity 强度=0.58 行为=share_experience
+2026-02-27 01:47:44.807 | DEBUG    | __main__:chat:654 - 记忆 59/400000 tokens (0.0%) | 保护区 1/12 轮 | trigger=300000 L1轮次=1
+2026-02-27 01:47:44.807 | DEBUG    | __main__:generate:175 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:47:56.087 | DEBUG    | __main__:generate:195 - LLM 响应成功 长度=296 chars
+2026-02-27 01:49:43.285 | DEBUG    | __main__:chat:627 - BERT 情绪=sadness 强度=0.58 行为=share_experience
+2026-02-27 01:49:43.419 | DEBUG    | __main__:chat:654 - 记忆 303/400000 tokens (0.1%) | 保护区 2/12 轮 | trigger=300000 L1轮次=2
+2026-02-27 01:49:43.419 | DEBUG    | __main__:generate:175 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:49:59.963 | DEBUG    | __main__:generate:195 - LLM 响应成功 长度=410 chars
+2026-02-27 01:51:13.683 | DEBUG    | __main__:chat:627 - BERT 情绪=sadness 强度=0.66 行为=share_experience
+2026-02-27 01:51:13.841 | DEBUG    | __main__:chat:654 - 记忆 648/400000 tokens (0.2%) | 保护区 3/12 轮 | trigger=300000 L1轮次=3
+2026-02-27 01:51:13.841 | DEBUG    | __main__:generate:175 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=400000
+2026-02-27 01:51:23.463 | DEBUG    | __main__:generate:195 - LLM 响应成功 长度=184 chars
+2026-02-27 01:53:06.523 | INFO     | __main__:close:703 - 正在写入长期记忆...
+2026-02-27 01:53:22.156 | INFO     | __main__:close:705 - 长期记忆已保存。

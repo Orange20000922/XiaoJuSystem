@@ -3,24 +3,37 @@
 
 架构分工：
   BERT 小模型 — 情绪/行为/强度分析，用于：
+    · 情绪感知指令注入 system prompt（emotion_prompts 配置映射）
     · L4 用户画像写入触发（高强度情绪）
     · 群聊注意力判断（是否需要回复）
     · 话题边界检测（触发记忆压缩）
     · 元数据记录（ConversationTurn）
 
-  LLM — 完整人格 prompt + 记忆上下文，自主判断如何回复
-    · 不再接收 BERT 分类结果，避免重复判断浪费 token
+  LLM — 完整人格 prompt + 情绪指令 + 记忆上下文
+
+  BERT 不可用时自动回退为纯 LLM 模式（默认 neutral 情绪）。
 """
 
+import os
 import torch
 import json
 import time
-from typing import Dict, List, Optional
-from dataclasses import dataclass, asdict
 from pathlib import Path
+from typing import Dict, List, Optional
+
+# 如果 HuggingFace 模型缓存已存在，自动启用离线模式，跳过联网检查
+def _auto_set_hf_offline():
+    model_name = "hfl/chinese-roberta-wwm-ext"
+    cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+    model_dir = cache_dir / ("models--" + model_name.replace("/", "--"))
+    if model_dir.exists() and "HF_HUB_OFFLINE" not in os.environ:
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
+_auto_set_hf_offline()
+from dataclasses import dataclass, asdict
 
 import sys
-from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -30,6 +43,7 @@ from models.joint_model import JointEmotionBehaviorModel, create_joint_model
 from configs.model_config import (
     PersonalityConfig,
     DEFAULT_PERSONALITY,
+    EmotionPromptConfig,
     LLMConfig,
     LLMProvider,
     MemoryConfig,
@@ -348,6 +362,7 @@ class NeuroLikePipeline:
         personality: PersonalityConfig,
         llm_config: Optional[LLMConfig] = None,
         memory_config: Optional[MemoryConfig] = None,
+        emotion_prompt_config: Optional[EmotionPromptConfig] = None,
         # 向后兼容的参数
         llm_provider: Optional[str] = None,
         llm_api_key: Optional[str] = None,
@@ -362,6 +377,8 @@ class NeuroLikePipeline:
             small_model_path: 小模型检查点路径
             personality: 人格配置
             llm_config: LLM配置对象（推荐使用）
+            memory_config: 记忆系统配置
+            emotion_prompt_config: BERT 输出 → Prompt 指令映射配置
             llm_provider: LLM提供商（向后兼容）
             llm_api_key: API密钥（向后兼容）
             llm_model: 模型名称（向后兼容）
@@ -370,13 +387,20 @@ class NeuroLikePipeline:
         """
         self.personality = personality
         self.device = device
+        self.emotion_prompt_config = emotion_prompt_config
 
-        # 加载小模型
-        logger.info("加载小模型...")
-        self.small_model, self.tokenizer = create_joint_model()
-        self._load_checkpoint(small_model_path)
-        self.small_model.to(device)
-        self.small_model.eval()
+        # 加载小模型（BERT 不可用时回退为 None，纯 LLM 模式）
+        try:
+            logger.info("加载小模型...")
+            self.small_model, self.tokenizer = create_joint_model()
+            self._load_checkpoint(small_model_path)
+            self.small_model.to(device)
+            self.small_model.eval()
+            logger.info("小模型加载成功")
+        except Exception as e:
+            logger.warning(f"小模型加载失败，进入纯 LLM 模式: {e}")
+            self.small_model = None
+            self.tokenizer = None
 
         # 初始化大模型客户端
         if llm_config is not None:
@@ -421,12 +445,13 @@ class NeuroLikePipeline:
             personality=app_cfg.personality,
             llm_config=app_cfg.llm,
             memory_config=app_cfg.memory,
+            emotion_prompt_config=app_cfg.emotion_prompts,
             device=app_cfg.device,
         )
 
     def _load_checkpoint(self, checkpoint_path: str):
         """加载模型检查点"""
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
         self.small_model.load_state_dict(checkpoint["model_state_dict"])
         logger.info(f"加载检查点: {checkpoint_path}")
         if "metrics" in checkpoint:
@@ -436,8 +461,10 @@ class NeuroLikePipeline:
             if 'emotion_acc' in metrics:
                 logger.info(f"  情绪准确率: {metrics['emotion_acc']:.2%}")
 
-    def analyze_emotion_behavior(self, text: str) -> Dict:
-        """使用小模型分析情绪和行为"""
+    def analyze_emotion_behavior(self, text: str) -> Optional[Dict]:
+        """使用小模型分析情绪和行为，BERT 不可用时返回 None"""
+        if self.small_model is None:
+            return None
         result = self.small_model.predict(
             text=text,
             personality=self.personality_vector,
@@ -446,10 +473,11 @@ class NeuroLikePipeline:
         )
         return result
 
-    def build_system_prompt(self, recalled_context: str = "") -> str:
+    def build_system_prompt(self, recalled_context: str = "",
+                            emotion_analysis: Optional[Dict] = None) -> str:
         """
         构建 system prompt。
-        只包含：人格 + L2/L3/L4 跨会话召回。
+        包含：人格 + BERT 情绪指令（可选）+ L2/L3/L4 跨会话召回。
         L1 原文通过 messages 数组单独传入，不在这里。
         """
         p = self.personality
@@ -469,14 +497,65 @@ class NeuroLikePipeline:
             )
 
         prompt = f"你是{p.name}。\n<persona>{personality_section}</persona>"
+
+        # BERT 情绪指令注入
+        if emotion_analysis and self.emotion_prompt_config:
+            directives = self._build_emotion_directives(emotion_analysis)
+            if directives:
+                prompt += f"\n<emotion_context>{directives}</emotion_context>"
+
         if recalled_context:
             prompt += f"\n{recalled_context}"
         prompt += "\n根据人格和对话历史自然回复，保持一致性。"
         return prompt
 
+    def _build_emotion_directives(self, emotion_analysis: Dict) -> str:
+        """
+        从 BERT 输出 + config 映射生成指令文本。
+
+        置信度门控：
+          effective_confidence = BERT_prob * emotion_reliability[label]
+          > strong  → 注入确定性指令
+          > weak    → 注入不确定指令（"用户可能…"）
+          ≤ weak   → 跳过情绪指令，让 LLM 自行判断
+        """
+        cfg = self.emotion_prompt_config
+        parts = []
+
+        emotion = emotion_analysis["emotion"]["primary"]
+        intensity = emotion_analysis["emotion"]["intensity"]
+        bert_prob = emotion_analysis["emotion"].get("primary_prob", 1.0)
+        behavior = emotion_analysis["behavior"]["type"]
+        tone = emotion_analysis["behavior"]["tone"]
+
+        # 有效置信度 = BERT 输出概率 × 该标签的历史可靠度
+        reliability = cfg.emotion_reliability.get(emotion, 0.7)
+        effective_conf = bert_prob * reliability
+        strong_thr = cfg.confidence_thresholds.get("strong", 0.5)
+        weak_thr = cfg.confidence_thresholds.get("weak", 0.3)
+
+        # 查 emotion_map
+        emotion_directive = cfg.emotion_map.get(emotion, "")
+        if emotion_directive:
+            if effective_conf >= strong_thr:
+                # 高置信度：确定性注入
+                if intensity >= cfg.intensity_levels.get("high_min", 0.7):
+                    emotion_directive = f"（强烈）{emotion_directive}"
+                parts.append(emotion_directive)
+            elif effective_conf >= weak_thr:
+                # 中置信度：不确定注入，去掉"用户"开头避免"用户可能用户..."重复
+                stripped = emotion_directive.lstrip("用户")
+                parts.append(f"用户可能{stripped}，但不确定，结合上下文判断")
+
+        # behavior/tone head 未经专项训练，预测为噪声，暂不注入
+        # 待 behavior/tone 标签补全并重新训练后再启用
+
+        return "。".join(parts) if parts else ""
+
     def generate_response(self, user_input: str,
                           recalled_context: str = "",
-                          history: Optional[List[Dict]] = None) -> str:
+                          history: Optional[List[Dict]] = None,
+                          emotion_analysis: Optional[Dict] = None) -> str:
         """
         使用大模型生成回复。
 
@@ -484,8 +563,9 @@ class NeuroLikePipeline:
             user_input: 当前用户输入
             recalled_context: L2/L3/L4 召回（进 system prompt）
             history: L1 原文 messages 列表（进 messages 数组）
+            emotion_analysis: BERT 情绪分析结果（注入 system prompt）
         """
-        system_prompt = self.build_system_prompt(recalled_context)
+        system_prompt = self.build_system_prompt(recalled_context, emotion_analysis)
         return self.llm_client.generate(
             system_prompt=system_prompt,
             user_input=user_input,
@@ -536,15 +616,29 @@ class NeuroLikePipeline:
                 "debug_info": {...}
             }
         """
-        # ── 旁路：BERT 分析（元数据，不影响 LLM 生成）──────────────────
+        # ── 旁路：BERT 分析 ──────────────────────────────────────────────
         emotion_behavior = self.analyze_emotion_behavior(user_input)
-        intensity = emotion_behavior["emotion"]["intensity"]
-        behavior_type = emotion_behavior["behavior"]["type"]
 
-        logger.debug(
-            f"BERT 情绪={emotion_behavior['emotion']['primary']} "
-            f"强度={intensity:.2f} 行为={behavior_type}"
-        )
+        if emotion_behavior is not None:
+            intensity = emotion_behavior["emotion"]["intensity"]
+            behavior_type = emotion_behavior["behavior"]["type"]
+            emotion_primary = emotion_behavior["emotion"]["primary"]
+            tone = emotion_behavior["behavior"]["tone"]
+            logger.debug(
+                f"BERT 情绪={emotion_primary} "
+                f"强度={intensity:.2f} 行为={behavior_type}"
+            )
+        else:
+            # BERT 不可用，使用默认值
+            intensity = 0.5
+            behavior_type = "respond_positive"
+            emotion_primary = "neutral"
+            tone = "calm"
+            emotion_behavior = {
+                "emotion": {"primary": emotion_primary, "intensity": intensity},
+                "behavior": {"type": behavior_type, "tone": tone},
+            }
+            logger.debug("BERT 不可用，使用默认情绪值")
 
         # ── 注意力判断 ────────────────────────────────────────────────────
         respond = self.should_respond(emotion_behavior, is_mentioned)
@@ -565,15 +659,18 @@ class NeuroLikePipeline:
         # ── LLM 生成 ──────────────────────────────────────────────────────
         response = None
         if respond:
-            response = self.generate_response(user_input, recalled, history)
+            response = self.generate_response(
+                user_input, recalled, history,
+                emotion_analysis=emotion_behavior,
+            )
 
         # ── 记忆写入（无论是否回复都记录，群聊静默观察也积累上下文）──────
         turn = ConversationTurn(
             user_input=user_input,
-            emotion=emotion_behavior["emotion"]["primary"],
+            emotion=emotion_primary,
             intensity=intensity,
             behavior=behavior_type,
-            tone=emotion_behavior["behavior"]["tone"],
+            tone=tone,
             response=response or "",
         )
         self.memory.add(turn)

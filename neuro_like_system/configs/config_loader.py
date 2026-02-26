@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Optional
 
 from configs.model_config import (
+    AnnotationAPIConfig,
+    EmotionPromptConfig,
     LLMConfig,
     LLMProvider,
     MemoryConfig,
@@ -120,6 +122,66 @@ def load_memory_config(cfg: dict) -> MemoryConfig:
     )
 
 
+def load_emotion_prompt_config(cfg: dict) -> EmotionPromptConfig:
+    ep = cfg.get("emotion_prompts", {})
+    if not ep:
+        return EmotionPromptConfig()
+    intensity = ep.get("intensity_levels", {})
+    ct = ep.get("confidence_thresholds", {})
+    return EmotionPromptConfig(
+        emotion_map=ep.get("emotion_map", {}),
+        behavior_map=ep.get("behavior_map", {}),
+        tone_map=ep.get("tone_map", {}),
+        intensity_levels={
+            "low_max": intensity.get("low_max", 0.4),
+            "high_min": intensity.get("high_min", 0.7),
+        },
+        emotion_reliability=ep.get("emotion_reliability", {}),
+        confidence_thresholds={
+            "strong": ct.get("strong", 0.5),
+            "weak": ct.get("weak", 0.3),
+        },
+    )
+
+
+def load_annotation_config(cfg: dict) -> AnnotationAPIConfig:
+    a = cfg.get("annotation", {})
+    if not a:
+        return AnnotationAPIConfig()
+
+    primary_prov = a.get("primary_provider", "openai").lower()
+    fallback_prov = a.get("fallback_provider", "deepseek").lower()
+
+    env_map = {
+        "openai": "OPENAI_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "custom": "CUSTOM_API_KEY",
+    }
+    primary_api_key = _resolve_api_key(
+        env_map.get(primary_prov, "OPENAI_API_KEY"),
+        a.get("primary_api_key", ""),
+    )
+    fallback_api_key = _resolve_api_key(
+        env_map.get(fallback_prov, "DEEPSEEK_API_KEY"),
+        a.get("fallback_api_key", ""),
+    )
+
+    return AnnotationAPIConfig(
+        primary_provider=LLMProvider(primary_prov),
+        primary_model=a.get("primary_model", "gpt-5.2-instant"),
+        primary_api_key=primary_api_key,
+        primary_base_url=a.get("primary_base_url") or None,
+        fallback_provider=LLMProvider(fallback_prov),
+        fallback_model=a.get("fallback_model", "deepseek-chat"),
+        fallback_api_key=fallback_api_key,
+        fallback_base_url=a.get("fallback_base_url") or None,
+        batch_size=a.get("batch_size", 10),
+        temperature=a.get("temperature", 0.3),
+        max_retries=a.get("max_retries", 3),
+    )
+
+
 class AppConfig:
     """完整运行时配置，由 config.json 加载"""
 
@@ -128,6 +190,8 @@ class AppConfig:
         llm: LLMConfig,
         personality: PersonalityConfig,
         memory: MemoryConfig,
+        emotion_prompts: EmotionPromptConfig,
+        annotation: AnnotationAPIConfig,
         small_model_checkpoint: str,
         device: str,
         attention_intensity_threshold: float,
@@ -136,6 +200,8 @@ class AppConfig:
         self.llm = llm
         self.personality = personality
         self.memory = memory
+        self.emotion_prompts = emotion_prompts
+        self.annotation = annotation
         self.small_model_checkpoint = small_model_checkpoint
         self.device = device
         self.attention_intensity_threshold = attention_intensity_threshold
@@ -169,6 +235,8 @@ class AppConfig:
             llm=load_llm_config(cfg),
             personality=load_personality_config(cfg),
             memory=load_memory_config(cfg),
+            emotion_prompts=load_emotion_prompt_config(cfg),
+            annotation=load_annotation_config(cfg),
             small_model_checkpoint=sm.get(
                 "checkpoint_path",
                 "./checkpoints/joint_model/best_model.pt"

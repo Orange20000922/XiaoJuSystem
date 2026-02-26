@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, asdict
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 import argparse
 
@@ -30,6 +31,7 @@ from configs.model_config import (
     AnnotationAPIConfig,
     DEFAULT_ANNOTATION_CONFIG,
 )
+from configs.config_loader import AppConfig
 
 
 # ============== 弹幕专用Prompt (简化版) ==============
@@ -281,12 +283,14 @@ class DanmakuAnnotator:
         config: Optional[AnnotationAPIConfig] = None,
         batch_size: int = 50,  # 弹幕短，可以大批量
         use_pattern_matching: bool = True,
-        deduplicate: bool = True
+        deduplicate: bool = True,
+        max_workers: int = 5,  # API 并发数
     ):
         self.config = config or DEFAULT_ANNOTATION_CONFIG
         self.batch_size = batch_size
         self.use_pattern_matching = use_pattern_matching
         self.deduplicate = deduplicate
+        self.max_workers = max_workers
 
         # API客户端
         from openai import OpenAI
@@ -337,11 +341,16 @@ class DanmakuAnnotator:
                     max_tokens=len(texts) * 50  # 每条弹幕约50 token
                 )
 
-                content = response.choices[0].message.content.strip()
-
-                # 记录token使用
-                if hasattr(response, 'usage'):
-                    self.stats["api_tokens"] += response.usage.total_tokens
+                # 代理可能返回原始字符串而非 ChatCompletion 对象
+                if isinstance(response, str):
+                    content = response.strip()
+                    if not content.startswith("["):
+                        raise ValueError(f"代理返回非JSON字符串: {content[:100]}")
+                else:
+                    content = response.choices[0].message.content.strip()
+                    # 记录token使用
+                    if hasattr(response, 'usage') and response.usage:
+                        self.stats["api_tokens"] += response.usage.total_tokens
 
                 # 解析JSON
                 # 尝试直接解析
@@ -469,21 +478,24 @@ class DanmakuAnnotator:
 
         annotated.extend(pattern_matched)
 
-        # 第三阶段：API标注
+        # 第三阶段：API标注（并发）
         if need_api:
-            print(f"\n[阶段3] API标注 ({len(need_api)} 条)...")
+            print(f"\n[阶段3] API标注 ({len(need_api)} 条, 并发={self.max_workers})...")
 
-            for i in tqdm(range(0, len(need_api), self.batch_size), desc="API标注"):
-                batch = need_api[i:i + self.batch_size]
-                results = self.annotate_batch_api(batch)
-                annotated.extend(results)
+            batches = [need_api[i:i + self.batch_size]
+                       for i in range(0, len(need_api), self.batch_size)]
+            save_every = max(1, 500 // self.batch_size)  # 约每500条保存
 
-                # 定期保存
-                if len(annotated) % 500 == 0:
-                    self._save_results(annotated, output_path)
-
-                # 避免限流
-                time.sleep(0.3)
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                futures = {executor.submit(self.annotate_batch_api, b): idx
+                           for idx, b in enumerate(batches)}
+                with tqdm(total=len(batches), desc="API标注") as pbar:
+                    for future in as_completed(futures):
+                        results = future.result()
+                        annotated.extend(results)
+                        pbar.update(1)
+                        if pbar.n % save_every == 0:
+                            self._save_results(annotated, output_path)
 
         # 最终保存
         self._save_results(annotated, output_path)
@@ -896,16 +908,20 @@ def convert_crawler_output(
 # ============== 主函数 ==============
 def main():
     parser = argparse.ArgumentParser(description="弹幕专用标注工具")
+    parser.add_argument("--config", type=str, default=None,
+                        help="config.json 路径（未指定 CLI 参数时从中读取标注配置）")
     subparsers = parser.add_subparsers(dest="command", help="命令")
 
     # API标注命令
     annotate_parser = subparsers.add_parser("annotate", help="使用API标注弹幕")
     annotate_parser.add_argument("--input", type=str, required=True, help="输入文件")
     annotate_parser.add_argument("--output", type=str, required=True, help="输出文件")
-    annotate_parser.add_argument("--model", type=str, default="gpt-5.2-instant", help="API模型")
+    annotate_parser.add_argument("--model", type=str, default=None,
+                                help="API模型（默认从 config.json 读取）")
     annotate_parser.add_argument("--api_key", type=str, default=None, help="API密钥")
     annotate_parser.add_argument("--base_url", type=str, default=None, help="API URL")
     annotate_parser.add_argument("--batch_size", type=int, default=50, help="批次大小")
+    annotate_parser.add_argument("--workers", type=int, default=5, help="API并发数 (默认: 5)")
     annotate_parser.add_argument("--max_samples", type=int, default=None, help="最大标注数")
     annotate_parser.add_argument("--no_pattern", action="store_true", help="禁用模式匹配")
     annotate_parser.add_argument("--no_dedup", action="store_true", help="禁用去重")
@@ -935,19 +951,33 @@ def main():
 
     args = parser.parse_args()
 
+    # 从 config.json 加载标注默认配置
+    try:
+        app_cfg = AppConfig.load(args.config)
+        ann_defaults = app_cfg.annotation
+    except FileNotFoundError:
+        ann_defaults = AnnotationAPIConfig()
+
     if args.command == "annotate":
-        # API标注
+        # CLI 参数覆盖 config.json 值
         config = AnnotationAPIConfig(
-            primary_model=args.model,
-            primary_api_key=args.api_key,
-            primary_base_url=args.base_url or "https://api.openai.com/v1"
+            primary_model=args.model or ann_defaults.primary_model,
+            primary_api_key=args.api_key or ann_defaults.primary_api_key,
+            primary_base_url=args.base_url or ann_defaults.primary_base_url,
+            fallback_provider=ann_defaults.fallback_provider,
+            fallback_model=ann_defaults.fallback_model,
+            fallback_api_key=ann_defaults.fallback_api_key,
+            fallback_base_url=ann_defaults.fallback_base_url,
+            temperature=ann_defaults.temperature,
+            max_retries=ann_defaults.max_retries,
         )
 
         annotator = DanmakuAnnotator(
             config=config,
             batch_size=args.batch_size,
             use_pattern_matching=not args.no_pattern,
-            deduplicate=not args.no_dedup
+            deduplicate=not args.no_dedup,
+            max_workers=args.workers,
         )
 
         annotator.annotate_file(

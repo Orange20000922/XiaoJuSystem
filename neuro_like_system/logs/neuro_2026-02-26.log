@@ -3527,3 +3527,22 @@ L1工作记忆就是当前上下文窗口里的东西，最快但容量有限；
 2026-02-26 14:08:51.956 | INFO     | __main__:run_cross_session_test:340 - 
 ============================================================
 2026-02-26 14:08:51.956 | INFO     | __main__:run_cross_session_test:341 - 跨 session 测试完成
+2026-02-26 17:08:28.805 | INFO     | __main__:main:364 - 配置加载成功: provider=anthropic model=claude-sonnet-4-6
+2026-02-26 17:08:28.806 | INFO     | __main__:ping_api:151 - 测试 API 连通性: https://cc.autobits.cc/ model=claude-sonnet-4-6
+2026-02-26 17:08:31.035 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=10
+2026-02-26 17:08:35.425 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=2 chars
+2026-02-26 17:08:35.425 | INFO     | __main__:ping_api:161 - API 连通正常 响应='OK' 耗时=4.39s
+2026-02-26 17:10:42.691 | INFO     | src.inference_pipeline:from_config:431 - 加载配置: AppConfig(
+  llm=anthropic:claude-sonnet-4-6,
+  personality=Neuro,
+  device=cpu,
+  context_window=400000
+)
+2026-02-26 17:10:42.692 | INFO     | src.inference_pipeline:__init__:383 - 加载小模型...
+2026-02-26 17:11:50.766 | WARNING  | src.inference_pipeline:__init__:390 - 小模型加载失败，进入纯 LLM 模式: [Errno 2] No such file or directory: './checkpoints/joint_model/best_model.pt'
+2026-02-26 17:11:50.777 | INFO     | src.inference_pipeline:__init__:396 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-26 17:22:36.069 | INFO     | __main__:main:364 - 配置加载成功: provider=anthropic model=claude-sonnet-4-6
+2026-02-26 17:22:36.070 | INFO     | __main__:ping_api:151 - 测试 API 连通性: https://cc.autobits.cc/ model=claude-sonnet-4-6
+2026-02-26 17:22:38.114 | DEBUG    | src.inference_pipeline:generate:164 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=10
+2026-02-26 17:22:41.850 | DEBUG    | src.inference_pipeline:generate:184 - LLM 响应成功 长度=2 chars
+2026-02-26 17:22:41.850 | INFO     | __main__:ping_api:161 - API 连通正常 响应='OK' 耗时=3.74s
