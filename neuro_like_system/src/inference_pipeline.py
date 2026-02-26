@@ -24,13 +24,14 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+from src.logger import logger
+
 from models.joint_model import JointEmotionBehaviorModel, create_joint_model
 from configs.model_config import (
     PersonalityConfig,
     DEFAULT_PERSONALITY,
     LLMConfig,
     LLMProvider,
-    DEFAULT_LLM_CONFIG,
     MemoryConfig,
 )
 from configs.config_loader import AppConfig
@@ -116,11 +117,23 @@ class LLMClient:
                 timeout=self.config.timeout
             )
         elif self.provider == LLMProvider.ANTHROPIC:
-            import anthropic
-            self.client = anthropic.Anthropic(
-                api_key=self.api_key,
-                timeout=self.config.timeout
-            )
+            import anthropic, httpx
+
+            kwargs = {"api_key": self.api_key, "timeout": self.config.timeout}
+            if self.base_url:
+                kwargs["base_url"] = self.base_url
+                # 代理模式：环境变量 ANTHROPIC_AUTH_TOKEN（Claude Code 登录 token）
+                # 会让 SDK 同时发送 x-api-key 和 Authorization 两个 header，
+                # 导致代理报 401 "冲突的 API 密钥"。
+                # 用 httpx event hook 在请求发出前移除 Authorization header。
+                def _strip_bearer(request: httpx.Request):
+                    if "authorization" in request.headers:
+                        del request.headers["authorization"]
+
+                kwargs["http_client"] = httpx.Client(
+                    event_hooks={"request": [_strip_bearer]}
+                )
+            self.client = anthropic.Anthropic(**kwargs)
         else:
             raise ValueError(f"不支持的provider: {self.provider}")
 
@@ -129,61 +142,128 @@ class LLMClient:
         system_prompt: str,
         user_input: str,
         max_tokens: Optional[int] = None,
-        temperature: Optional[float] = None
+        temperature: Optional[float] = None,
+        history: Optional[List[Dict]] = None,
     ) -> str:
         """
-        生成回复
+        生成回复，带指数退避重试。
 
-        Args:
-            system_prompt: 系统提示
-            user_input: 用户输入
-            max_tokens: 最大token数（默认使用配置值）
-            temperature: 温度（默认使用配置值）
-
-        Returns:
-            生成的回复文本
+        可重试错误（网络/限流/服务端临时故障）：最多 max_retries 次。
+        不可重试错误（认证失败/请求参数非法）：立即抛出，不重试。
         """
         max_tokens = max_tokens or self.config.max_tokens
         temperature = temperature or self.config.temperature
 
+        delay = self.config.retry_delay
+
         for attempt in range(self.config.max_retries):
             try:
-                if self.provider in [LLMProvider.OPENAI, LLMProvider.DEEPSEEK, LLMProvider.CUSTOM]:
-                    return self._generate_openai_compatible(
-                        system_prompt, user_input, max_tokens, temperature
-                    )
-                elif self.provider == LLMProvider.ANTHROPIC:
-                    return self._generate_anthropic(
-                        system_prompt, user_input, max_tokens, temperature
-                    )
-            except Exception as e:
-                if attempt < self.config.max_retries - 1:
-                    print(f"API调用失败，重试中 ({attempt + 1}/{self.config.max_retries}): {e}")
-                    time.sleep(self.config.retry_delay * (attempt + 1))
+                logger.debug(
+                    f"LLM 请求 attempt={attempt + 1}/{self.config.max_retries} "
+                    f"model={self.model} max_tokens={max_tokens}"
+                )
+                if self.provider in [LLMProvider.OPENAI, LLMProvider.DEEPSEEK,
+                                     LLMProvider.CUSTOM]:
+                    if self.config.use_responses_api:
+                        result = self._generate_responses_api(
+                            system_prompt, user_input, max_tokens, temperature,
+                            history=history,
+                        )
+                    else:
+                        result = self._generate_openai_compatible(
+                            system_prompt, user_input, max_tokens, temperature,
+                            history=history,
+                        )
                 else:
+                    result = self._generate_anthropic(
+                        system_prompt, user_input, max_tokens, temperature,
+                    )
+                logger.debug(f"LLM 响应成功 长度={len(result)} chars")
+                return result
+
+            except Exception as e:
+                err_str = str(e)
+                status_code = getattr(e, "status_code", None)
+
+                # ── 不可重试：认证/权限/请求参数错误 ──────────────────
+                if status_code in (401, 403, 422):
+                    logger.error(
+                        f"LLM 不可重试错误 status={status_code}: {err_str}"
+                    )
                     raise
+
+                # ── 不可重试：上下文超长 ────────────────────────────────
+                if status_code == 400 and "context" in err_str.lower():
+                    logger.error(f"LLM 上下文超长 status=400: {err_str}")
+                    raise
+
+                # ── 可重试：限流 / 服务不可用 / 网络超时 ────────────────
+                is_last = attempt >= self.config.max_retries - 1
+                if is_last:
+                    logger.error(
+                        f"LLM 请求失败，已达最大重试次数 {self.config.max_retries}: {err_str}"
+                    )
+                    raise
+
+                logger.warning(
+                    f"LLM 请求失败 attempt={attempt + 1}/{self.config.max_retries} "
+                    f"status={status_code} error={err_str} "
+                    f"等待 {delay:.1f}s 后重试..."
+                )
+                time.sleep(delay)
+                delay = min(delay * self.config.retry_backoff,
+                            self.config.retry_max_delay)
 
     def _generate_openai_compatible(
         self,
         system_prompt: str,
         user_input: str,
         max_tokens: int,
-        temperature: float
+        temperature: float,
+        history: Optional[List[Dict]] = None,
     ) -> str:
-        """OpenAI兼容API生成"""
+        """
+        OpenAI 兼容 API 生成。
+        history 为 L1 原文 messages 列表，直接拼入上下文窗口。
+        """
+        messages = [{"role": "system", "content": system_prompt}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": user_input})
+
         response = self.client.chat.completions.create(
             model=self.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_input}
-            ],
+            messages=messages,
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=self.config.top_p,
             frequency_penalty=self.config.frequency_penalty,
-            presence_penalty=self.config.presence_penalty
+            presence_penalty=self.config.presence_penalty,
         )
         return response.choices[0].message.content
+
+    def _generate_responses_api(
+        self,
+        system_prompt: str,
+        user_input: str,
+        max_tokens: int,
+        temperature: float,
+        history: Optional[List[Dict]] = None,
+    ) -> str:
+        """OpenAI Responses API（/v1/responses）格式生成"""
+        # 构造 input：历史 messages + 当前用户输入
+        input_messages = list(history) if history else []
+        input_messages.append({"role": "user", "content": user_input})
+
+        response = self.client.responses.create(
+            model=self.model,
+            instructions=system_prompt,
+            input=input_messages,
+            max_output_tokens=max_tokens,
+            temperature=temperature,
+            top_p=self.config.top_p,
+        )
+        return response.output[0].content[0].text
 
     def _generate_anthropic(
         self,
@@ -192,15 +272,29 @@ class LLMClient:
         max_tokens: int,
         temperature: float
     ) -> str:
-        """Anthropic API生成"""
+        """Anthropic API生成（system prompt 标记 cache_control 启用缓存）"""
         response = self.client.messages.create(
             model=self.model,
-            system=system_prompt,
+            system=[
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             messages=[{"role": "user", "content": user_input}],
             max_tokens=max_tokens,
             temperature=temperature,
-            top_p=self.config.top_p
+            top_p=self.config.top_p,
         )
+        import re
+        # 优先取 text 类型 block，过滤 thinking block
+        for block in response.content:
+            if block.type == "text":
+                # 部分供应商把 <thinking>...</thinking> 混在 text 里，过滤掉
+                text = re.sub(r"<thinking>.*?</thinking>\s*", "", block.text,
+                              flags=re.DOTALL).strip()
+                return text if text else block.text
         return response.content[0].text
 
     @classmethod
@@ -278,7 +372,7 @@ class NeuroLikePipeline:
         self.device = device
 
         # 加载小模型
-        print("加载小模型...")
+        logger.info("加载小模型...")
         self.small_model, self.tokenizer = create_joint_model()
         self._load_checkpoint(small_model_path)
         self.small_model.to(device)
@@ -286,12 +380,10 @@ class NeuroLikePipeline:
 
         # 初始化大模型客户端
         if llm_config is not None:
-            # 使用新的配置方式
-            print(f"初始化大模型客户端 ({llm_config.provider.value}: {llm_config.model})...")
+            logger.info(f"初始化大模型客户端 ({llm_config.provider.value}: {llm_config.model})")
             self.llm_client = LLMClient(llm_config)
         elif llm_provider is not None:
-            # 向后兼容旧的参数方式
-            print(f"初始化大模型客户端 ({llm_provider})...")
+            logger.info(f"初始化大模型客户端 ({llm_provider})")
             self.llm_client = LLMClient.from_args(
                 provider=llm_provider,
                 api_key=llm_api_key,
@@ -299,9 +391,10 @@ class NeuroLikePipeline:
                 base_url=llm_base_url
             )
         else:
-            # 使用默认配置
-            print(f"初始化大模型客户端 (默认: {DEFAULT_LLM_CONFIG.model})...")
-            self.llm_client = LLMClient(DEFAULT_LLM_CONFIG)
+            raise ValueError(
+                "未提供 LLM 配置。请使用 NeuroLikePipeline.from_config() 从 config.json 加载，"
+                "或通过 llm_config 参数传入 LLMConfig 对象。"
+            )
 
         # 记忆管理器
         if memory_config is not None:
@@ -322,7 +415,7 @@ class NeuroLikePipeline:
     def from_config(cls, config_path: Optional[str] = None) -> "NeuroLikePipeline":
         """从 config.json 创建 Pipeline（推荐入口）"""
         app_cfg = AppConfig.load(config_path)
-        print(f"加载配置: {app_cfg}")
+        logger.info(f"加载配置: {app_cfg}")
         return cls(
             small_model_path=app_cfg.small_model_checkpoint,
             personality=app_cfg.personality,
@@ -335,13 +428,13 @@ class NeuroLikePipeline:
         """加载模型检查点"""
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.small_model.load_state_dict(checkpoint["model_state_dict"])
-        print(f"加载检查点: {checkpoint_path}")
+        logger.info(f"加载检查点: {checkpoint_path}")
         if "metrics" in checkpoint:
             metrics = checkpoint['metrics']
             if 'val_loss' in metrics:
-                print(f"  验证损失: {metrics['val_loss']:.4f}")
+                logger.info(f"  验证损失: {metrics['val_loss']:.4f}")
             if 'emotion_acc' in metrics:
-                print(f"  情绪准确率: {metrics['emotion_acc']:.2%}")
+                logger.info(f"  情绪准确率: {metrics['emotion_acc']:.2%}")
 
     def analyze_emotion_behavior(self, text: str) -> Dict:
         """使用小模型分析情绪和行为"""
@@ -353,36 +446,51 @@ class NeuroLikePipeline:
         )
         return result
 
-    def build_system_prompt(self, context: str = "") -> str:
-        """构建系统 Prompt（纯人格 + 记忆上下文，不含 BERT 输出）"""
-        prompt = f"""你是{self.personality.name}，一个有独特个性的 AI。
+    def build_system_prompt(self, recalled_context: str = "") -> str:
+        """
+        构建 system prompt。
+        只包含：人格 + L2/L3/L4 跨会话召回。
+        L1 原文通过 messages 数组单独传入，不在这里。
+        """
+        p = self.personality
 
-# 人格特质
-- 性格: {', '.join(self.personality.traits)}
-- 开放性: {self.personality.openness:.1f}/1.0
-- 外向性: {self.personality.extraversion:.1f}/1.0
-- 幽默感: {self.personality.humor_tendency:.1f}/1.0
-- 共情能力: {self.personality.empathy_level:.1f}/1.0
-- 好奇心: {self.personality.curiosity_level:.1f}/1.0
-- 语言风格: {'随意口语' if self.personality.formality < 0.4 else '适中' if self.personality.formality < 0.7 else '正式'}
+        if p.description.strip():
+            personality_section = p.description.strip()
+        else:
+            formality_str = (
+                "口语" if p.formality < 0.4 else
+                "适中" if p.formality < 0.7 else "正式"
+            )
+            personality_section = (
+                f"[标签]{','.join(p.traits)} "
+                f"[开放]{p.openness:.1f} [外向]{p.extraversion:.1f} "
+                f"[幽默]{p.humor_tendency:.1f} [共情]{p.empathy_level:.1f} "
+                f"[好奇]{p.curiosity_level:.1f} [风格]{formality_str}"
+            )
 
-# 对话历史与记忆
-{context if context else '(首次对话)'}
-
-# 指令
-根据你的人格和对话历史自然地回复。你自己判断语气、情绪和回复方式，不需要遵循任何外部指令。
-像真实的人一样聊天，保持人格一致性。
-"""
+        prompt = f"你是{p.name}。\n<persona>{personality_section}</persona>"
+        if recalled_context:
+            prompt += f"\n{recalled_context}"
+        prompt += "\n根据人格和对话历史自然回复，保持一致性。"
         return prompt
 
-    def generate_response(self, user_input: str, context: str = "") -> str:
-        """使用大模型生成回复"""
-        system_prompt = self.build_system_prompt(context)
-        response = self.llm_client.generate(
+    def generate_response(self, user_input: str,
+                          recalled_context: str = "",
+                          history: Optional[List[Dict]] = None) -> str:
+        """
+        使用大模型生成回复。
+
+        Args:
+            user_input: 当前用户输入
+            recalled_context: L2/L3/L4 召回（进 system prompt）
+            history: L1 原文 messages 列表（进 messages 数组）
+        """
+        system_prompt = self.build_system_prompt(recalled_context)
+        return self.llm_client.generate(
             system_prompt=system_prompt,
             user_input=user_input,
+            history=history,
         )
-        return response
 
     def should_respond(self, emotion_behavior: Dict, is_mentioned: bool = False) -> bool:
         """
@@ -433,25 +541,31 @@ class NeuroLikePipeline:
         intensity = emotion_behavior["emotion"]["intensity"]
         behavior_type = emotion_behavior["behavior"]["type"]
 
-        if verbose:
-            print(f"[BERT] 情绪={emotion_behavior['emotion']['primary']} "
-                  f"强度={intensity:.2f} 行为={behavior_type}")
+        logger.debug(
+            f"BERT 情绪={emotion_behavior['emotion']['primary']} "
+            f"强度={intensity:.2f} 行为={behavior_type}"
+        )
 
         # ── 注意力判断 ────────────────────────────────────────────────────
         respond = self.should_respond(emotion_behavior, is_mentioned)
+        if not respond:
+            logger.debug("注意力判断：跳过回复，仅记录记忆")
 
         # ── 记忆上下文 ────────────────────────────────────────────────────
         if isinstance(self.memory, HierarchicalMemoryManager):
-            context = self.memory.format_context(query=user_input)
-            if verbose:
-                print(f"[记忆] {self.memory.l1_usage}")
+            # L2/L3/L4 召回 → system prompt
+            recalled = self.memory.get_system_context(query=user_input)
+            # L1 原文 → messages 数组
+            history = self.memory.get_messages_history()
+            logger.debug(f"记忆 {self.memory.l1_usage} L1轮次={len(self.memory.working_memory)}")
         else:
-            context = self.memory.format_context(num_turns=5)
+            recalled = self.memory.format_context(num_turns=5)
+            history = None
 
-        # ── LLM 生成（仅人格 + 记忆，不含 BERT 输出）────────────────────
+        # ── LLM 生成 ──────────────────────────────────────────────────────
         response = None
         if respond:
-            response = self.generate_response(user_input, context)
+            response = self.generate_response(user_input, recalled, history)
 
         # ── 记忆写入（无论是否回复都记录，群聊静默观察也积累上下文）──────
         turn = ConversationTurn(
@@ -484,14 +598,14 @@ class NeuroLikePipeline:
         data = [asdict(turn) for turn in turns]
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"对话历史已保存: {output_path}")
+        logger.info(f"对话历史已保存: {output_path}")
 
     def close(self):
         """会话结束：触发 L2→L3 长期记忆写入（仅分级记忆模式有效）"""
         if isinstance(self.memory, HierarchicalMemoryManager):
-            print("正在写入长期记忆...")
+            logger.info("正在写入长期记忆...")
             self.memory.close_session()
-            print("长期记忆已保存。")
+            logger.info("长期记忆已保存。")
 
 
 def interactive_chat(pipeline: NeuroLikePipeline):

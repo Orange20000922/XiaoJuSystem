@@ -41,6 +41,7 @@ from configs.model_config import (
     TONE_TO_ID,
     ID_TO_TONE
 )
+from configs.config_loader import AppConfig
 
 
 # ============== 模拟器 ==============
@@ -450,43 +451,57 @@ def main():
 
     args = parser.parse_args()
 
+    # 尝试从 config.json 加载基础配置，CLI 参数覆盖优先
+    _app_cfg = None
+    try:
+        _app_cfg = AppConfig.load()
+    except FileNotFoundError:
+        pass  # 测试工具允许无 config.json 运行
+
     # 验证参数
     if not args.mock and not args.checkpoint:
-        print("错误: 真实模式需要指定 --checkpoint")
-        print("提示: 使用 --mock 进入模拟模式")
-        return
+        checkpoint = _app_cfg.small_model_checkpoint if _app_cfg else None
+        if not checkpoint:
+            print("错误: 真实模式需要指定 --checkpoint 或在 config.json 中配置 small_model.checkpoint_path")
+            print("提示: 使用 --mock 进入模拟模式")
+            return
+        args.checkpoint = checkpoint
 
     if not args.offline and not args.api_key:
-        print("错误: 在线模式需要指定 --api_key")
-        print("提示: 使用 --offline 进入离线模式")
-        return
+        api_key = _app_cfg.llm.api_key if _app_cfg else None
+        if not api_key:
+            print("错误: 在线模式需要指定 --api_key 或在 config.json / 环境变量中配置 API key")
+            print("提示: 使用 --offline 进入离线模式")
+            return
+        args.api_key = api_key
 
-    # 创建LLM配置
+    # 创建LLM配置（CLI 参数覆盖 config.json）
     llm_config = None
     if not args.offline:
-        default_models = {
-            "openai": "gpt-4o-mini",
-            "deepseek": "deepseek-chat",
-            "anthropic": "claude-3-5-haiku-20241022",
-            "custom": "gpt-4o-mini"
-        }
-        model = args.model or default_models.get(args.provider, "gpt-4o-mini")
+        if _app_cfg and not any([args.model, args.base_url,
+                                  args.provider != "openai"]):
+            # 无 CLI 覆盖时直接复用 config.json 的 LLM 配置
+            llm_config = _app_cfg.llm
+            if args.api_key:
+                llm_config.api_key = args.api_key
+        else:
+            llm_config = LLMConfig(
+                provider=LLMProvider(args.provider),
+                api_key=args.api_key,
+                model=args.model or (_app_cfg.llm.model if _app_cfg else "gpt-5.2-instant"),
+                base_url=args.base_url or (_app_cfg.llm.base_url if _app_cfg else None),
+            )
 
-        llm_config = LLMConfig(
-            provider=LLMProvider(args.provider),
-            api_key=args.api_key,
-            model=model,
-            base_url=args.base_url
-        )
+    personality = _app_cfg.personality if _app_cfg else DEFAULT_PERSONALITY
 
     # 创建Pipeline
     pipeline = TestPipeline(
-        personality=DEFAULT_PERSONALITY,
+        personality=personality,
         mock_mode=args.mock,
         offline_mode=args.offline,
         checkpoint_path=args.checkpoint,
         llm_config=llm_config,
-        device=args.device
+        device=args.device or (_app_cfg.device if _app_cfg else "cpu"),
     )
 
     # 确定模式描述

@@ -8,6 +8,7 @@
 """
 
 import json
+import os
 import time
 from typing import List, Dict, Optional, TYPE_CHECKING
 
@@ -99,26 +100,58 @@ class HierarchicalMemoryManager:
         self.last_behavior: str = ""
 
         # Mem0 后端
+        # HuggingFace 模型已缓存，跳过联网检查更新
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        # Mem0 的 embedder 通过环境变量读取 OpenAI endpoint
+        if config.mem0_api_key:
+            os.environ["OPENAI_API_KEY"] = config.mem0_api_key
+        if config.mem0_base_url:
+            os.environ["OPENAI_BASE_URL"] = config.mem0_base_url
+
         mem0_cfg: Dict = {
             "vector_store": {
                 "provider": "qdrant",
                 "config": {
                     "collection_name": config.collection_name,
                     "path": config.vector_store_path,
+                    "embedding_model_dims": 384,
+                    "on_disk": True,
                 },
             },
             "llm": {
-                "provider": "openai",
+                "provider": "anthropic",
                 "config": {
                     "model": config.mem0_llm_model,
                     "temperature": config.mem0_llm_temperature,
                     "api_key": config.mem0_api_key,
-                    **({"base_url": config.mem0_base_url}
-                       if config.mem0_base_url else {}),
+                },
+            },
+            "embedder": {
+                "provider": "huggingface",
+                "config": {
+                    "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
                 },
             },
         }
         self.mem0 = Memory.from_config(mem0_cfg)
+
+        # Mem0 内部的 Anthropic 客户端会读环境变量 ANTHROPIC_AUTH_TOKEN，
+        # 导致同时发送 x-api-key 和 Authorization header，代理报 401。
+        # 用 httpx event hook 剥掉 Authorization header。
+        if hasattr(self.mem0, "llm") and hasattr(self.mem0.llm, "client"):
+            import anthropic, httpx
+
+            def _strip_bearer(request: httpx.Request):
+                if "authorization" in request.headers:
+                    del request.headers["authorization"]
+
+            self.mem0.llm.client = anthropic.Anthropic(
+                api_key=config.mem0_api_key,
+                base_url=config.mem0_base_url,
+                http_client=httpx.Client(
+                    event_hooks={"request": [_strip_bearer]}
+                ),
+            )
 
     # ── L1 操作 ──────────────────────────────────────────────────────────
 
@@ -181,7 +214,7 @@ class HierarchicalMemoryManager:
         self.mem0.add(
             [{"role": "assistant", "content": content}],
             user_id=self.user_id,
-            session_id=self.session_id,
+            run_id=self.session_id,
         )
 
         removed_tokens = sum(count_tokens(turn_to_text(t)) for t in to_compress)
@@ -196,14 +229,24 @@ class HierarchicalMemoryManager:
           1. 压缩保护区以外的剩余 L1
           2. 从本次会话的状态快照中抽取长期事实写入 L3
         """
-        # 先压缩剩余可压缩区（保护区内容丢弃，它们是最新的已在对话中体现）
+        # 保护区最近几轮原文写入 L3，保证下次 session 能召回最近对话细节
+        protected = self.working_memory[-self.PROTECTED_TURNS:]
+        if protected:
+            recent = "\n".join(turn_to_text(t) for t in protected)
+            self.mem0.add(
+                [{"role": "assistant", "content": f"[最近对话] {recent}"}],
+                user_id=self.user_id,
+            )
+
+        # 压缩剩余可压缩区
         n = len(self.working_memory)
         compressible_end = max(0, n - self.PROTECTED_TURNS)
         if compressible_end > 0:
             self._compress_l1_to_l2()
 
         session_mems = self.mem0.get_all(
-            filters={"user_id": self.user_id, "session_id": self.session_id}
+            user_id=self.user_id,
+            run_id=self.session_id,
         )
         if not session_mems or not session_mems.get("results"):
             return
@@ -236,57 +279,83 @@ class HierarchicalMemoryManager:
         self.mem0.add(
             [{"role": "assistant", "content": content}],
             agent_id="neuro_agent",
+            user_id=self.user_id,
         )
 
     # ── 召回与 prompt 组装 ────────────────────────────────────────────────
 
-    def format_context(self, query: str) -> str:
+    def get_system_context(self, query: str) -> str:
         """
-        供 build_system_prompt() 调用。
-        L1 保护区原文优先，L2/L3 状态快照按语义检索补充。
+        返回注入 system prompt 的跨会话上下文（L2/L3/L4 召回）。
+        L1 原文不在这里，走 get_messages_history()。
         """
         sections = []
 
-        # L1 保护区：最近 PROTECTED_TURNS 轮原文（全部注入，不受 budget 限制）
-        protected = self.working_memory[-self.PROTECTED_TURNS:]
-        if protected:
-            sections.append(
-                "## 最近对话\n" + "".join(turn_to_text(t) for t in protected)
-            )
-
-        # L2：当前会话状态快照（语义检索）
         l2 = self.mem0.search(
             query=query,
-            filters={"user_id": self.user_id, "session_id": self.session_id},
+            user_id=self.user_id,
+            run_id=self.session_id,
             limit=self.config.l3_search_limit,
         )
-        # L3：跨会话长期记忆（语义检索）
         l3 = self.mem0.search(
             query=query,
-            filters={"user_id": self.user_id},
+            user_id=self.user_id,
             limit=self.config.l3_search_limit,
         )
         combined = self._merge(l2, l3)
         if combined:
             sections.append(
-                "## 历史上下文\n" + "\n".join(f"- {m}" for m in combined)
+                "<history>" + "|".join(combined) + "</history>"
+            )
+        elif self._has_l3_records():
+            # 语义搜索没命中具体内容，但 L3 确实有历史记录
+            sections.append(
+                "<has_memory>你们之前聊过天，你记得这个人，但一时想不起具体聊了什么。"
+                "像正常人一样回应，比如'嗯我们之前聊过的'、'你提醒一下我，上次聊到哪了'，"
+                "绝对不要说'这是第一次对话'，也不要提到记忆系统、数据、调取之类的词。</has_memory>"
             )
 
-        # L4：知识库
         l4 = self.mem0.search(
             query=query,
-            filters={"agent_id": "neuro_agent"},
+            agent_id="neuro_agent",
             limit=self.config.l4_search_limit,
         )
         l4_items = self._filter(l4)
         if l4_items:
             sections.append(
-                "## 知识库\n" + "\n".join(f"- {m['memory']}" for m in l4_items)
+                "<knowledge>" +
+                "|".join(m["memory"] for m in l4_items) +
+                "</knowledge>"
             )
 
-        return "\n\n".join(sections) if sections else "(首次对话)"
+        return "\n".join(sections) if sections else ""
+
+    def get_messages_history(self) -> List[Dict]:
+        """
+        返回 L1 working_memory 的 OpenAI messages 格式列表。
+        直接传入 API 的 messages 数组，让 API 在真实窗口内维护上下文。
+        """
+        messages = []
+        for turn in self.working_memory:
+            if turn.user_input:
+                messages.append({"role": "user", "content": turn.user_input})
+            if turn.response:
+                messages.append({"role": "assistant", "content": turn.response})
+        return messages
+
+    # 向后兼容
+    def format_context(self, query: str) -> str:
+        return self.get_system_context(query)
 
     # ── 工具方法 ──────────────────────────────────────────────────────────
+
+    def _has_l3_records(self) -> bool:
+        """检查 L3（user 级持久记忆）是否有任何记录"""
+        try:
+            l3 = self.mem0.get_all(user_id=self.user_id)
+            return bool(l3 and l3.get("results"))
+        except Exception:
+            return False
 
     def _filter(self, search_result: Optional[Dict]) -> List[Dict]:
         if not search_result or "results" not in search_result:

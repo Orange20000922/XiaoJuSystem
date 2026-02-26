@@ -32,10 +32,12 @@ wandb/
 .tensorboard/
 experiment_results/
 *.onnx
-
+# docs
+neuro_like_system/docs/
 # Output data (crawler results)
 output/
 # ONNX Runtime libraries (download locally)
 Include/
 Lib/
-
+# memory context data
+neuro_like_system/data/

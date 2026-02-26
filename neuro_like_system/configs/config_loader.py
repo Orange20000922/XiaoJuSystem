@@ -59,6 +59,9 @@ def load_llm_config(cfg: dict) -> LLMConfig:
         timeout=llm.get("timeout", 30),
         max_retries=llm.get("max_retries", 3),
         retry_delay=llm.get("retry_delay", 1.0),
+        retry_backoff=llm.get("retry_backoff", 2.0),
+        retry_max_delay=llm.get("retry_max_delay", 60.0),
+        use_responses_api=llm.get("use_responses_api", False),
     )
 
 
@@ -79,6 +82,7 @@ def load_personality_config(cfg: dict) -> PersonalityConfig:
         formality=p.get("formality", 0.3),
         verbosity=p.get("verbosity", 0.5),
         traits=p.get("traits", ["活泼", "好奇", "善良"]),
+        description=p.get("description", ""),
     )
 
 

@@ -1,0 +1,441 @@
+2026-02-26 00:29:04.061 | WARNING  | src.inference_pipeline:generate:190 - LLM 请求失败 attempt=1/3 status=502 error=<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>502 Bad Gateway</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<style>
+	address { line-height: 1.8; }
+	</style>
+</head>
+<body>
+
+<h1>502 Bad Gateway</h1>
+<p>The site is unavailable now, cause: Failed to read origin site.</p>
+
+<address>Connection: 120.229.18.246 (Client) -&gt;  (Server)</address>
+<address>Request ID: 1772036940032131000001.</address>
+
+</body>
+</html> 等待 1.0s 后重试...
+2026-02-26 00:29:07.833 | WARNING  | src.inference_pipeline:generate:190 - LLM 请求失败 attempt=2/3 status=502 error=<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>502 Bad Gateway</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<style>
+	address { line-height: 1.8; }
+	</style>
+</head>
+<body>
+
+<h1>502 Bad Gateway</h1>
+<p>The site is unavailable now, cause: Failed to read origin site.</p>
+
+<address>Connection: 120.229.18.246 (Client) -&gt;  (Server)</address>
+<address>Request ID: 1772036943832131000001.</address>
+
+</body>
+</html> 等待 2.0s 后重试...
+2026-02-26 00:29:12.320 | ERROR    | src.inference_pipeline:generate:185 - LLM 请求失败，已达最大重试次数 3: <!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>502 Bad Gateway</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<style>
+	address { line-height: 1.8; }
+	</style>
+</head>
+<body>
+
+<h1>502 Bad Gateway</h1>
+<p>The site is unavailable now, cause: Failed to read origin site.</p>
+
+<address>Connection: 120.229.18.246 (Client) -&gt;  (Server)</address>
+<address>Request ID: 1772036948231131000001.</address>
+
+</body>
+</html>
+2026-02-26 00:29:12.322 | ERROR    | __main__:ping_api:81 - API 连通失败: <!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>502 Bad Gateway</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<style>
+	address { line-height: 1.8; }
+	</style>
+</head>
+<body>
+
+<h1>502 Bad Gateway</h1>
+<p>The site is unavailable now, cause: Failed to read origin site.</p>
+
+<address>Connection: 120.229.18.246 (Client) -&gt;  (Server)</address>
+<address>Request ID: 1772036948231131000001.</address>
+
+</body>
+</html>
+2026-02-26 00:31:23.597 | WARNING  | src.inference_pipeline:generate:190 - LLM 请求失败 attempt=1/3 status=502 error=<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>502 Bad Gateway</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<style>
+	address { line-height: 1.8; }
+	</style>
+</head>
+<body>
+
+<h1>502 Bad Gateway</h1>
+<p>The site is unavailable now, cause: Failed to read origin site.</p>
+
+<address>Connection: 120.229.18.246 (Client) -&gt;  (Server)</address>
+<address>Request ID: 1772037079632131000001.</address>
+
+</body>
+</html> 等待 1.0s 后重试...
+2026-02-26 00:31:27.066 | WARNING  | src.inference_pipeline:generate:190 - LLM 请求失败 attempt=2/3 status=502 error=<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>502 Bad Gateway</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<style>
+	address { line-height: 1.8; }
+	</style>
+</head>
+<body>
+
+<h1>502 Bad Gateway</h1>
+<p>The site is unavailable now, cause: Failed to read origin site.</p>
+
+<address>Connection: 120.229.18.246 (Client) -&gt;  (Server)</address>
+<address>Request ID: 1772037083032131000001.</address>
+
+</body>
+</html> 等待 2.0s 后重试...
+2026-02-26 00:31:31.491 | ERROR    | src.inference_pipeline:generate:185 - LLM 请求失败，已达最大重试次数 3: <!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>502 Bad Gateway</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<style>
+	address { line-height: 1.8; }
+	</style>
+</head>
+<body>
+
+<h1>502 Bad Gateway</h1>
+<p>The site is unavailable now, cause: Failed to read origin site.</p>
+
+<address>Connection: 120.229.18.246 (Client) -&gt;  (Server)</address>
+<address>Request ID: 1772037087432131000001.</address>
+
+</body>
+</html>
+2026-02-26 00:31:31.491 | ERROR    | __main__:ping_api:81 - API 连通失败: <!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>502 Bad Gateway</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<style>
+	address { line-height: 1.8; }
+	</style>
+</head>
+<body>
+
+<h1>502 Bad Gateway</h1>
+<p>The site is unavailable now, cause: Failed to read origin site.</p>
+
+<address>Connection: 120.229.18.246 (Client) -&gt;  (Server)</address>
+<address>Request ID: 1772037087432131000001.</address>
+
+</body>
+</html>
+2026-02-26 00:39:36.929 | WARNING  | src.inference_pipeline:generate:190 - LLM 请求失败 attempt=1/3 status=502 error=<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>502 Bad Gateway</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<style>
+	address { line-height: 1.8; }
+	</style>
+</head>
+<body>
+
+<h1>502 Bad Gateway</h1>
+<p>The site is unavailable now, cause: Failed to read origin site.</p>
+
+<address>Connection: 120.229.18.246 (Client) -&gt;  (Server)</address>
+<address>Request ID: 1772037572844631000001.</address>
+
+</body>
+</html> 等待 1.0s 后重试...
+2026-02-26 00:39:40.333 | WARNING  | src.inference_pipeline:generate:190 - LLM 请求失败 attempt=2/3 status=502 error=<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>502 Bad Gateway</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<style>
+	address { line-height: 1.8; }
+	</style>
+</head>
+<body>
+
+<h1>502 Bad Gateway</h1>
+<p>The site is unavailable now, cause: Failed to read origin site.</p>
+
+<address>Connection: 120.229.18.246 (Client) -&gt;  (Server)</address>
+<address>Request ID: 1772037576244631000001.</address>
+
+</body>
+</html> 等待 2.0s 后重试...
+2026-02-26 00:39:44.732 | ERROR    | src.inference_pipeline:generate:185 - LLM 请求失败，已达最大重试次数 3: <!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>502 Bad Gateway</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<style>
+	address { line-height: 1.8; }
+	</style>
+</head>
+<body>
+
+<h1>502 Bad Gateway</h1>
+<p>The site is unavailable now, cause: Failed to read origin site.</p>
+
+<address>Connection: 120.229.18.246 (Client) -&gt;  (Server)</address>
+<address>Request ID: 1772037580643631000006.</address>
+
+</body>
+</html>
+2026-02-26 00:39:44.732 | ERROR    | __main__:ping_api:81 - API 连通失败: <!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>502 Bad Gateway</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<style>
+	address { line-height: 1.8; }
+	</style>
+</head>
+<body>
+
+<h1>502 Bad Gateway</h1>
+<p>The site is unavailable now, cause: Failed to read origin site.</p>
+
+<address>Connection: 120.229.18.246 (Client) -&gt;  (Server)</address>
+<address>Request ID: 1772037580643631000006.</address>
+
+</body>
+</html>
+2026-02-26 00:54:22.115 | WARNING  | src.inference_pipeline:generate:190 - LLM 请求失败 attempt=1/3 status=502 error=<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>502 Bad Gateway</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<style>
+	address { line-height: 1.8; }
+	</style>
+</head>
+<body>
+
+<h1>502 Bad Gateway</h1>
+<p>The site is unavailable now, cause: Failed to read origin site.</p>
+
+<address>Connection: 120.229.18.246 (Client) -&gt;  (Server)</address>
+<address>Request ID: 1772038458044631000001.</address>
+
+</body>
+</html> 等待 1.0s 后重试...
+2026-02-26 00:56:05.873 | WARNING  | src.inference_pipeline:generate:190 - LLM 请求失败 attempt=1/3 status=None error='str' object has no attribute 'choices' 等待 1.0s 后重试...
+2026-02-26 00:56:08.962 | WARNING  | src.inference_pipeline:generate:190 - LLM 请求失败 attempt=2/3 status=None error='str' object has no attribute 'choices' 等待 2.0s 后重试...
+2026-02-26 00:56:11.953 | ERROR    | src.inference_pipeline:generate:185 - LLM 请求失败，已达最大重试次数 3: 'str' object has no attribute 'choices'
+2026-02-26 00:56:11.956 | ERROR    | __main__:ping_api:81 - API 连通失败: 'str' object has no attribute 'choices'
+2026-02-26 00:59:59.862 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=1/3 status=None error='str' object has no attribute 'output' 等待 1.0s 后重试...
+2026-02-26 01:00:02.910 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=2/3 status=None error='str' object has no attribute 'output' 等待 2.0s 后重试...
+2026-02-26 01:00:07.202 | ERROR    | src.inference_pipeline:generate:191 - LLM 请求失败，已达最大重试次数 3: 'str' object has no attribute 'output'
+2026-02-26 01:00:07.202 | ERROR    | __main__:ping_api:81 - API 连通失败: 'str' object has no attribute 'output'
+2026-02-26 01:06:32.066 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=1/3 status=None error='str' object has no attribute 'output' 等待 1.0s 后重试...
+2026-02-26 01:06:36.856 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=2/3 status=None error='str' object has no attribute 'output' 等待 2.0s 后重试...
+2026-02-26 01:06:42.114 | ERROR    | src.inference_pipeline:generate:191 - LLM 请求失败，已达最大重试次数 3: 'str' object has no attribute 'output'
+2026-02-26 01:06:42.114 | ERROR    | __main__:ping_api:81 - API 连通失败: 'str' object has no attribute 'output'
+2026-02-26 01:07:44.390 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=1/3 status=503 error=Error code: 503 - {'error': {'message': 'No available providers (cch_session_id: sess_mm2af32a_de09239319cf)', 'type': 'no_available_providers', 'code': 'no_available_providers'}} 等待 1.0s 后重试...
+2026-02-26 01:07:48.655 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=2/3 status=503 error=Error code: 503 - {'error': {'message': 'No available providers (cch_session_id: sess_mm2af32a_de09239319cf)', 'type': 'no_available_providers', 'code': 'no_available_providers'}} 等待 2.0s 后重试...
+2026-02-26 01:07:53.004 | ERROR    | src.inference_pipeline:generate:191 - LLM 请求失败，已达最大重试次数 3: Error code: 503 - {'error': {'message': 'No available providers (cch_session_id: sess_mm2af32a_de09239319cf)', 'type': 'no_available_providers', 'code': 'no_available_providers'}}
+2026-02-26 01:07:53.005 | ERROR    | __main__:ping_api:81 - API 连通失败: Error code: 503 - {'error': {'message': 'No available providers (cch_session_id: sess_mm2af32a_de09239319cf)', 'type': 'no_available_providers', 'code': 'no_available_providers'}}
+2026-02-26 01:10:57.850 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=1/3 status=503 error=Error code: 503 - {'error': {'message': 'No available providers (cch_session_id: sess_mm2af32a_de09239319cf)', 'type': 'no_available_providers', 'code': 'no_available_providers'}} 等待 1.0s 后重试...
+2026-02-26 01:11:01.788 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=2/3 status=503 error=Error code: 503 - {'error': {'message': 'No available providers (cch_session_id: sess_mm2af32a_de09239319cf)', 'type': 'no_available_providers', 'code': 'no_available_providers'}} 等待 2.0s 后重试...
+2026-02-26 01:11:06.112 | ERROR    | src.inference_pipeline:generate:191 - LLM 请求失败，已达最大重试次数 3: Error code: 503 - {'error': {'message': 'No available providers (cch_session_id: sess_mm2af32a_de09239319cf)', 'type': 'no_available_providers', 'code': 'no_available_providers'}}
+2026-02-26 01:11:06.113 | ERROR    | __main__:ping_api:81 - API 连通失败: Error code: 503 - {'error': {'message': 'No available providers (cch_session_id: sess_mm2af32a_de09239319cf)', 'type': 'no_available_providers', 'code': 'no_available_providers'}}
+2026-02-26 01:14:06.343 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=1/3 status=503 error=Error code: 503 - {'error': {'message': 'No available providers (cch_session_id: sess_mm2anbxw_a4d68a3dec5e)', 'type': 'no_available_providers', 'code': 'no_available_providers'}} 等待 1.0s 后重试...
+2026-02-26 01:14:11.816 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=2/3 status=503 error=Error code: 503 - {'error': {'message': 'No available providers (cch_session_id: sess_mm2anbxw_a4d68a3dec5e)', 'type': 'no_available_providers', 'code': 'no_available_providers'}} 等待 2.0s 后重试...
+2026-02-26 01:17:31.454 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=1/3 status=None error='str' object has no attribute 'choices' 等待 1.0s 后重试...
+2026-02-26 01:17:34.406 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=2/3 status=None error='str' object has no attribute 'choices' 等待 2.0s 后重试...
+2026-02-26 01:17:38.163 | ERROR    | src.inference_pipeline:generate:191 - LLM 请求失败，已达最大重试次数 3: 'str' object has no attribute 'choices'
+2026-02-26 01:17:38.164 | ERROR    | __main__:ping_api:81 - API 连通失败: 'str' object has no attribute 'choices'
+2026-02-26 01:43:24.515 | ERROR    | __main__:run_memory_test:238 - [第1轮] 生成失败: At least one of 'user_id', 'agent_id', or 'run_id' must be provided.
+2026-02-26 01:45:54.897 | ERROR    | __main__:run_memory_test:236 - [第1轮] 生成失败: Error code: 503 - {'error': {'message': '所有供应商暂时不可用，请稍后重试 (cch_session_id: 019c95e8-1a93-7382-9c62-e1bac90d6da9)', 'type': 'service_unavailable_error', 'code': 'service_unavailable_error'}}
+2026-02-26 01:46:47.998 | ERROR    | __main__:run_memory_test:236 - [第1轮] 生成失败: Error code: 503 - {'error': {'message': '所有供应商暂时不可用，请稍后重试 (cch_session_id: 019c95e8-1a93-7382-9c62-e1bac90d6da9)', 'type': 'service_unavailable_error', 'code': 'service_unavailable_error'}}
+2026-02-26 01:48:26.368 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=1/3 status=503 error=Error code: 503 - {'error': {'message': '所有供应商暂时不可用，请稍后重试 (cch_session_id: sess_mm2bvhnm_4dddb7f08b0d)', 'type': 'service_unavailable_error', 'code': 'service_unavailable_error'}} 等待 1.0s 后重试...
+2026-02-26 01:48:46.981 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=2/3 status=503 error=Error code: 503 - {'error': {'message': '所有供应商暂时不可用，请稍后重试 (cch_session_id: sess_mm2bvhnm_4dddb7f08b0d)', 'type': 'service_unavailable_error', 'code': 'service_unavailable_error'}} 等待 2.0s 后重试...
+2026-02-26 01:58:29.336 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=1/3 status=503 error=Error code: 503 - {'error': {'message': '所有供应商暂时不可用，请稍后重试 (cch_session_id: sess_mm2c7kt5_52c34a335ec4)', 'type': 'service_unavailable_error', 'code': 'service_unavailable_error'}} 等待 1.0s 后重试...
+2026-02-26 01:59:05.598 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=2/3 status=503 error=Error code: 503 - {'error': {'message': '所有供应商暂时不可用，请稍后重试 (cch_session_id: sess_mm2c7kt5_52c34a335ec4)', 'type': 'service_unavailable_error', 'code': 'service_unavailable_error'}} 等待 2.0s 后重试...
+2026-02-26 01:59:17.401 | ERROR    | src.inference_pipeline:generate:191 - LLM 请求失败，已达最大重试次数 3: Error code: 503 - {'error': {'message': '所有供应商暂时不可用，请稍后重试 (cch_session_id: sess_mm2c7kt5_52c34a335ec4)', 'type': 'service_unavailable_error', 'code': 'service_unavailable_error'}}
+2026-02-26 01:59:17.401 | ERROR    | __main__:ping_api:164 - API 连通失败: Error code: 503 - {'error': {'message': '所有供应商暂时不可用，请稍后重试 (cch_session_id: sess_mm2c7kt5_52c34a335ec4)', 'type': 'service_unavailable_error', 'code': 'service_unavailable_error'}}
+2026-02-26 01:59:17.401 | ERROR    | __main__:main:304 - API 不可用，终止测试
+2026-02-26 02:46:52.083 | ERROR    | __main__:run_memory_test:268 - [第1轮] 生成失败: ValueError: shapes (0,1536) and (384,) not aligned: 1536 (dim 1) != 384 (dim 0)
+2026-02-26 02:46:52.092 | ERROR    | __main__:run_memory_test:269 - [第1轮] 完整堆栈:
+Traceback (most recent call last):
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\neuro_like_system\src\quick_test.py", line 208, in run_memory_test
+    recalled = pipeline.memory.get_system_context(query=msg)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\neuro_like_system\src\memory_manager.py", line 263, in get_system_context
+    l2 = self.mem0.search(
+         ^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\mem0\memory\main.py", line 842, in search
+    original_memories = future_memories.result()
+                        ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Programs\Python\Python311\Lib\concurrent\futures\_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\Programs\Python\Python311\Lib\concurrent\futures\_base.py", line 401, in __get_result
+    raise self._exception
+  File "D:\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\mem0\memory\main.py", line 956, in _search_vector_store
+    memories = self.vector_store.search(query=query, vectors=embeddings, limit=limit, filters=filters)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\mem0\vector_stores\qdrant.py", line 176, in search
+    hits = self.client.query_points(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\qdrant_client.py", line 423, in query_points
+    return self._client.query_points(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\qdrant_local.py", line 417, in query_points
+    return collection.query_points(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\local_collection.py", line 748, in query_points
+    scored_points = self._query_collection(
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\local_collection.py", line 924, in _query_collection
+    return self.search(
+           ^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\local_collection.py", line 587, in search
+    scores = calculate_distance(query_vector, vectors, distance)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\distances.py", line 194, in calculate_distance
+    return cosine_similarity(query, vectors)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\distances.py", line 136, in cosine_similarity
+    return np.dot(vectors, query)
+           ^^^^^^^^^^^^^^^^^^^^^^
+ValueError: shapes (0,1536) and (384,) not aligned: 1536 (dim 1) != 384 (dim 0)
+
+2026-02-26 02:48:13.031 | ERROR    | __main__:run_memory_test:268 - [第1轮] 生成失败: ValueError: shapes (0,1536) and (384,) not aligned: 1536 (dim 1) != 384 (dim 0)
+2026-02-26 02:48:13.037 | ERROR    | __main__:run_memory_test:269 - [第1轮] 完整堆栈:
+Traceback (most recent call last):
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\neuro_like_system\src\quick_test.py", line 208, in run_memory_test
+    recalled = pipeline.memory.get_system_context(query=msg)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\neuro_like_system\src\memory_manager.py", line 263, in get_system_context
+    l2 = self.mem0.search(
+         ^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\mem0\memory\main.py", line 842, in search
+    original_memories = future_memories.result()
+                        ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Programs\Python\Python311\Lib\concurrent\futures\_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\Programs\Python\Python311\Lib\concurrent\futures\_base.py", line 401, in __get_result
+    raise self._exception
+  File "D:\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\mem0\memory\main.py", line 956, in _search_vector_store
+    memories = self.vector_store.search(query=query, vectors=embeddings, limit=limit, filters=filters)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\mem0\vector_stores\qdrant.py", line 176, in search
+    hits = self.client.query_points(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\qdrant_client.py", line 423, in query_points
+    return self._client.query_points(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\qdrant_local.py", line 417, in query_points
+    return collection.query_points(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\local_collection.py", line 748, in query_points
+    scored_points = self._query_collection(
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\local_collection.py", line 924, in _query_collection
+    return self.search(
+           ^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\local_collection.py", line 587, in search
+    scores = calculate_distance(query_vector, vectors, distance)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\distances.py", line 194, in calculate_distance
+    return cosine_similarity(query, vectors)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\distances.py", line 136, in cosine_similarity
+    return np.dot(vectors, query)
+           ^^^^^^^^^^^^^^^^^^^^^^
+ValueError: shapes (0,1536) and (384,) not aligned: 1536 (dim 1) != 384 (dim 0)
+
+2026-02-26 02:50:03.021 | ERROR    | __main__:run_memory_test:268 - [第1轮] 生成失败: ValueError: shapes (0,1536) and (384,) not aligned: 1536 (dim 1) != 384 (dim 0)
+2026-02-26 02:50:03.027 | ERROR    | __main__:run_memory_test:269 - [第1轮] 完整堆栈:
+Traceback (most recent call last):
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\neuro_like_system\src\quick_test.py", line 208, in run_memory_test
+    recalled = pipeline.memory.get_system_context(query=msg)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\neuro_like_system\src\memory_manager.py", line 263, in get_system_context
+    l2 = self.mem0.search(
+         ^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\mem0\memory\main.py", line 842, in search
+    original_memories = future_memories.result()
+                        ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Programs\Python\Python311\Lib\concurrent\futures\_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\Programs\Python\Python311\Lib\concurrent\futures\_base.py", line 401, in __get_result
+    raise self._exception
+  File "D:\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\mem0\memory\main.py", line 956, in _search_vector_store
+    memories = self.vector_store.search(query=query, vectors=embeddings, limit=limit, filters=filters)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\mem0\vector_stores\qdrant.py", line 176, in search
+    hits = self.client.query_points(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\qdrant_client.py", line 423, in query_points
+    return self._client.query_points(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\qdrant_local.py", line 417, in query_points
+    return collection.query_points(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\local_collection.py", line 748, in query_points
+    scored_points = self._query_collection(
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\local_collection.py", line 924, in _query_collection
+    return self.search(
+           ^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\local_collection.py", line 587, in search
+    scores = calculate_distance(query_vector, vectors, distance)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\distances.py", line 194, in calculate_distance
+    return cosine_similarity(query, vectors)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\21405\source\repos\MyNeuroLikeSystem\Lib\site-packages\qdrant_client\local\distances.py", line 136, in cosine_similarity
+    return np.dot(vectors, query)
+           ^^^^^^^^^^^^^^^^^^^^^^
+ValueError: shapes (0,1536) and (384,) not aligned: 1536 (dim 1) != 384 (dim 0)
+
+2026-02-26 03:02:37.455 | ERROR    | src.inference_pipeline:generate:178 - LLM 不可重试错误 status=401: Error code: 401 - {'error': {'message': '提供了多个冲突的 API 密钥。请仅使用一种认证方式。', 'type': 'authentication_error', 'code': 'authentication_error'}}
+2026-02-26 03:02:37.458 | ERROR    | __main__:ping_api:164 - API 连通失败: Error code: 401 - {'error': {'message': '提供了多个冲突的 API 密钥。请仅使用一种认证方式。', 'type': 'authentication_error', 'code': 'authentication_error'}}
+2026-02-26 03:02:37.458 | ERROR    | __main__:main:363 - API 不可用，终止测试
+2026-02-26 03:16:42.823 | ERROR    | src.inference_pipeline:generate:178 - LLM 不可重试错误 status=401: Error code: 401 - {'error': {'message': '提供了多个冲突的 API 密钥。请仅使用一种认证方式。', 'type': 'authentication_error', 'code': 'authentication_error'}}
+2026-02-26 03:16:42.824 | ERROR    | __main__:ping_api:164 - API 连通失败: Error code: 401 - {'error': {'message': '提供了多个冲突的 API 密钥。请仅使用一种认证方式。', 'type': 'authentication_error', 'code': 'authentication_error'}}
+2026-02-26 03:16:42.824 | ERROR    | __main__:main:363 - API 不可用，终止测试
+2026-02-26 12:51:26.958 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=1/3 status=None error=Connection error. 等待 1.0s 后重试...
+2026-02-26 12:51:30.887 | WARNING  | src.inference_pipeline:generate:196 - LLM 请求失败 attempt=2/3 status=None error=Connection error. 等待 2.0s 后重试...
+2026-02-26 12:51:35.248 | ERROR    | src.inference_pipeline:generate:191 - LLM 请求失败，已达最大重试次数 3: Connection error.
+2026-02-26 12:51:35.250 | ERROR    | __main__:ping_api:164 - API 连通失败: Connection error.
+2026-02-26 12:51:35.250 | ERROR    | __main__:main:363 - API 不可用，终止测试

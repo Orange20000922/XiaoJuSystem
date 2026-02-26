@@ -25,9 +25,6 @@ from data.dataset import create_dataloader
 from configs.model_config import (
     JointModelConfig,
     JointModelConfigLowVRAM,
-    PersonalityConfig,
-    DEFAULT_JOINT_CONFIG,
-    DEFAULT_JOINT_CONFIG_LOW_VRAM,
     DEFAULT_PERSONALITY
 )
 

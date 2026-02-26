@@ -99,6 +99,10 @@ class PersonalityConfig:
     # 特殊标签
     traits: List[str] = field(default_factory=lambda: ["活泼", "好奇", "善良"])
 
+    # 自由文本人格描述（直接注入 prompt，优先级高于数值字段）
+    # 填写后将替代数值参数作为人格描述，支持详细的行为规范、语言习惯、负向约束等
+    description: str = ""
+
     def to_embedding_vector(self) -> List[float]:
         """转换为嵌入向量"""
         return [
@@ -257,7 +261,12 @@ class LLMConfig:
 
     # 重试设置
     max_retries: int = 3
-    retry_delay: float = 1.0
+    retry_delay: float = 1.0        # 首次重试等待秒数
+    retry_backoff: float = 2.0      # 指数退避乘数
+    retry_max_delay: float = 60.0   # 单次等待上限（秒）
+
+    # 使用 OpenAI Responses API（/v1/responses）而非 Chat Completions API
+    use_responses_api: bool = False
 
     def __post_init__(self):
         """初始化后处理：从环境变量读取密钥"""
