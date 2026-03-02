@@ -378,6 +378,44 @@ class LLMConfig:
         )
 
 
+# ============== Agent 事件循环配置 ==============
+@dataclass
+class AgentConfig:
+    """Agent 事件循环配置"""
+    proactive_level: str = "off"          # "off" | "low" | "medium"
+    idle_threshold_seconds: int = 300
+    proactive_interval_seconds: int = 30
+    time_awareness: bool = True
+    tick_interval: float = 2.0
+
+
+# ============== 主动决策模块配置 ==============
+@dataclass
+class ProactiveConfig:
+    """主动决策模块配置"""
+    enabled: bool = True
+
+    # 判断层 LLM（DeepSeek）
+    decision_provider: str = "deepseek"
+    decision_model: str = "deepseek-chat"
+    decision_temperature: float = 0.3
+    decision_timeout: float = 5.0
+
+    # 决策阈值
+    confidence_threshold: float = 0.6  # should_respond 置信度阈值
+
+    # 上下文窗口
+    recent_turns_limit: int = 8        # 从 L1 取最近 N 轮
+    l4_memory_limit: int = 3           # 从 L4 取 N 条情感记忆
+
+    # 时间驱动触发
+    idle_trigger_hours: float = 2.0    # 空闲 N 小时后触发主动决策
+    response_wait_minutes: int = 30    # 主动发言后等待用户回应的时间
+
+    # 冷却时间（秒）
+    min_interval_seconds: int = 30
+
+
 # ============== 预设LLM配置 ==============
 # GPT-5 系列
 DEFAULT_LLM_CONFIG = LLMConfig.openai(model="gpt-5")
@@ -436,11 +474,15 @@ DEFAULT_ANNOTATION_CONFIG = AnnotationAPIConfig()
 class MemoryConfig:
     """Token 计数导向的分级记忆系统配置"""
 
+    # 用户身份标识（用于 Mem0 user_id，区分不同用户的记忆）
+    user_id: str = "owner"
+
     # Mem0 向量存储
     vector_store_path: str = "./data/qdrant_db"
     collection_name: str = "neuro_memory"
 
     # Mem0 内部 LLM（压缩摘要/事实抽取用，复用对话 LLM 的 key/endpoint）
+    mem0_llm_provider: str = "openai"   # "anthropic" | "openai"（openai 兼容所有 OAI-compatible 接口）
     mem0_llm_model: str = "gpt-5.2-instant"
     mem0_llm_temperature: float = 0.1
     mem0_api_key: Optional[str] = None
@@ -470,4 +512,37 @@ class MemoryConfig:
 
 
 DEFAULT_MEMORY_CONFIG = MemoryConfig()
+
+
+# ============== 情绪融合配置 ==============
+@dataclass
+class EmotionFusionConfig:
+    """BERT + LLM 双信号情绪融合配置"""
+    enabled: bool = True
+    use_by_default: bool = True  # 默认是否启用融合（全局开关）
+    w_bert: float = 0.6
+    w_llm: float = 0.4
+    bias: float = 0.0
+    skip_llm_threshold: float = 0.85
+    llm_timeout: float = 5.0
+    llm_temperature: float = 0.3
+
+
+DEFAULT_EMOTION_FUSION_CONFIG = EmotionFusionConfig()
+
+
+# ============== 情绪状态机配置 ==============
+@dataclass
+class EmotionStateConfig:
+    """情绪状态机配置（valence-arousal 二维连续状态）"""
+    alpha: float = 0.80             # 状态惯性
+    beta: float = 0.25              # AI 自身输出影响权重
+    gamma: float = 0.12             # 用户情绪影响权重
+    noise_sigma: float = 0.05       # 随机噪声强度
+    injection_threshold: float = 0.35  # |state| 超过此值才注入 prompt
+    save_interval_turns: int = 5    # 每 N 轮保存一次到 L4
+    persist_to_l4: bool = True
+
+
+DEFAULT_EMOTION_STATE_CONFIG = EmotionStateConfig()
 

@@ -11,12 +11,16 @@ from pathlib import Path
 from typing import Optional
 
 from configs.model_config import (
+    AgentConfig,
     AnnotationAPIConfig,
+    EmotionFusionConfig,
     EmotionPromptConfig,
+    EmotionStateConfig,
     LLMConfig,
     LLMProvider,
     MemoryConfig,
     PersonalityConfig,
+    ProactiveConfig,
 )
 
 
@@ -102,25 +106,24 @@ def load_personality_config(cfg: dict) -> PersonalityConfig:
 
 def load_memory_config(cfg: dict) -> MemoryConfig:
     m = cfg.get("memory", {})
-    # Mem0 内部 LLM 的 key 复用主 LLM 的 key
     llm_section = cfg.get("llm", {})
-    provider_str = llm_section.get("provider", "custom").lower()
-    env_map = {
-        "openai": "OPENAI_API_KEY",
-        "deepseek": "DEEPSEEK_API_KEY",
+    mem0_llm_provider = m.get("mem0_llm_provider", "openai").lower()
+    # API key：优先用 memory 块自己显式配置的，否则 fallback 到同 provider 的主 LLM key
+    mem0_provider_env = {
         "anthropic": "ANTHROPIC_API_KEY",
-        "custom": "CUSTOM_API_KEY",
-    }
+        "openai":    "OPENAI_API_KEY",
+    }.get(mem0_llm_provider, "OPENAI_API_KEY")
     mem0_api_key = _resolve_api_key(
-        env_map.get(provider_str, "OPENAI_API_KEY"),
+        mem0_provider_env,
         m.get("mem0_api_key", "") or llm_section.get("api_key", "")
     )
-    mem0_base_url = (m.get("mem0_base_url") or
-                     llm_section.get("base_url") or None)
+    mem0_base_url = m.get("mem0_base_url") or None
 
     return MemoryConfig(
+        user_id=m.get("user_id", "owner"),
         vector_store_path=m.get("vector_store_path", "./data/qdrant_db"),
         collection_name=m.get("collection_name", "neuro_memory"),
+        mem0_llm_provider=mem0_llm_provider,
         mem0_llm_model=m.get("mem0_llm_model", "gpt-5.2-instant"),
         mem0_llm_temperature=m.get("mem0_llm_temperature", 0.1),
         mem0_api_key=mem0_api_key,
@@ -194,6 +197,63 @@ def load_annotation_config(cfg: dict) -> AnnotationAPIConfig:
     )
 
 
+def load_agent_config(cfg: dict) -> AgentConfig:
+    a = cfg.get("agent", {})
+    return AgentConfig(
+        proactive_level=a.get("proactive_level", "off"),
+        idle_threshold_seconds=a.get("idle_threshold_seconds", 300),
+        proactive_interval_seconds=a.get("proactive_interval_seconds", 30),
+        time_awareness=a.get("time_awareness", True),
+        tick_interval=a.get("tick_interval", 2.0),
+    )
+
+
+def load_emotion_fusion_config(cfg: dict) -> EmotionFusionConfig:
+    ef = cfg.get("emotion_fusion", {})
+    return EmotionFusionConfig(
+        enabled=ef.get("enabled", True),
+        use_by_default=ef.get("use_by_default", True),
+        w_bert=ef.get("w_bert", 0.6),
+        w_llm=ef.get("w_llm", 0.4),
+        bias=ef.get("bias", 0.0),
+        skip_llm_threshold=ef.get("skip_llm_threshold", 0.85),
+        llm_timeout=ef.get("llm_timeout", 5.0),
+        llm_temperature=ef.get("llm_temperature", 0.3),
+    )
+
+
+def load_emotion_state_config(cfg: dict) -> Optional[EmotionStateConfig]:
+    es = cfg.get("emotion_state")
+    if not es:
+        return None
+    return EmotionStateConfig(
+        alpha=es.get("alpha", 0.80),
+        beta=es.get("beta", 0.25),
+        gamma=es.get("gamma", 0.12),
+        noise_sigma=es.get("noise_sigma", 0.05),
+        injection_threshold=es.get("injection_threshold", 0.35),
+        save_interval_turns=es.get("save_interval_turns", 5),
+        persist_to_l4=es.get("persist_to_l4", True),
+    )
+
+
+def load_proactive_config(cfg: dict) -> ProactiveConfig:
+    p = cfg.get("proactive", {})
+    return ProactiveConfig(
+        enabled=p.get("enabled", True),
+        decision_provider=p.get("decision_provider", "deepseek"),
+        decision_model=p.get("decision_model", "deepseek-chat"),
+        decision_temperature=p.get("decision_temperature", 0.3),
+        decision_timeout=p.get("decision_timeout", 5.0),
+        confidence_threshold=p.get("confidence_threshold", 0.6),
+        recent_turns_limit=p.get("recent_turns_limit", 8),
+        l4_memory_limit=p.get("l4_memory_limit", 3),
+        idle_trigger_hours=p.get("idle_trigger_hours", 2.0),
+        response_wait_minutes=p.get("response_wait_minutes", 30),
+        min_interval_seconds=p.get("min_interval_seconds", 30),
+    )
+
+
 class AppConfig:
     """完整运行时配置，由 config.json 加载"""
 
@@ -209,6 +269,10 @@ class AppConfig:
         attention_intensity_threshold: float,
         attention_cooldown_seconds: int,
         llm_secondary: Optional[LLMConfig] = None,
+        agent: Optional[AgentConfig] = None,
+        emotion_fusion: Optional[EmotionFusionConfig] = None,
+        emotion_state_config: Optional[EmotionStateConfig] = None,
+        proactive: Optional[ProactiveConfig] = None,
     ):
         self.llm = llm
         self.llm_secondary = llm_secondary
@@ -220,6 +284,10 @@ class AppConfig:
         self.device = device
         self.attention_intensity_threshold = attention_intensity_threshold
         self.attention_cooldown_seconds = attention_cooldown_seconds
+        self.agent = agent or AgentConfig()
+        self.emotion_fusion = emotion_fusion or EmotionFusionConfig()
+        self.emotion_state_config = emotion_state_config
+        self.proactive = proactive or ProactiveConfig()
 
     @classmethod
     def load(cls, path: Optional[str] = None) -> "AppConfig":
@@ -259,6 +327,10 @@ class AppConfig:
             device=sm.get("device", "cpu"),
             attention_intensity_threshold=att.get("intensity_threshold", 0.7),
             attention_cooldown_seconds=att.get("cooldown_seconds", 60),
+            agent=load_agent_config(cfg),
+            emotion_fusion=load_emotion_fusion_config(cfg),
+            emotion_state_config=load_emotion_state_config(cfg),
+            proactive=load_proactive_config(cfg),
         )
 
     def __repr__(self) -> str:

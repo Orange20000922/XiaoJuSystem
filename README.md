@@ -5,13 +5,43 @@
 ## 系统架构
 
 ```
+                  外部输入
+                    │
+        ┌───────────┼───────────┐
+        ▼           ▼           ▼
+    用户消息    群聊消息流    系统事件(未来)
+        │           │           │
+        └───────────┼───────────┘
+                    ▼
+             ┌─────────────┐
+             │  事件队列     │   thread-safe Queue
+             └──────┬──────┘
+                    │
+    Agent 循环 (独立线程, 持续运行)
+    ┌───────────────┼───────────────────────┐
+    │               ▼                       │
+    │   ┌───────────────────────┐           │
+    │   │  collect_events()     │           │
+    │   │  · 队列中的消息       │           │
+    │   │  · 空闲计时器         │           │
+    │   │  · 时间段变化         │           │
+    │   └───────────┬───────────┘           │
+    │               ▼                       │
+    │   ┌───────────────────────┐           │
+    │   │  decide()             │           │
+    │   │  · 有消息 → chat()    │           │
+    │   │  · 空闲超时 → 主动说  │           │
+    │   │  · 都没有 → 继续等    │           │
+    │   └───────────┬───────────┘           │
+    │               ▼                       │
+    │       output_callback(msg)            │
+    │       (CLI print / QQ API / ...)      │
+    └───────────────────────────────────────┘
+                    │
+                    ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                        Neuro-Like System                                │
+│                        Neuro-Like Pipeline                              │
 │                                                                         │
-│  用户输入                                                                │
-│    │                                                                    │
-│    ├──────────────────────┐                                             │
-│    ▼                      ▼                                             │
 │  ┌──────────────┐   ┌──────────────────────────────────────────────┐   │
 │  │  BERT 小模型  │   │          分级记忆系统                         │   │
 │  │  (~15ms GPU)  │   │                                              │   │
@@ -23,12 +53,12 @@
 │  │              │   │                                              │   │
 │  └──────┬───────┘   │  L4 知识库      用户画像 / Agent 结果          │   │
 │         │           └────────────────────┬─────────────────────────┘   │
-│         │                                │                             │
 │         ▼                                ▼                             │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
 │  │                    System Prompt 组装                            │   │
 │  │                                                                 │   │
 │  │  <persona> 人格描述 </persona>                                  │   │
+│  │  <current_time> 时间感知 </current_time>                        │   │
 │  │  <emotion_context> BERT 置信度门控指令 </emotion_context>        │   │
 │  │  <memory> L2/L3/L4 召回上下文 </memory>                         │   │
 │  │  + L1 原文 messages 数组                                        │   │
@@ -100,6 +130,35 @@ result = pipeline.chat(msg, is_mentioned=is_at, chat_mode=ChatMode.GROUP)
 
 高强度情绪（intensity ≥ 0.7）额外 +0.15 权重。
 
+### Agent 事件循环
+
+将 Neuro 从纯请求-响应升级为持续运行的 Agent。用户输入只是事件队列中的一种事件，Neuro 可以根据空闲时间等条件主动发言。
+
+**主动性档位** (`proactive_level`)：
+
+| 档位 | 行为 | 适用场景 |
+|---|---|---|
+| `off` | 纯被动，只处理消息队列 | 默认，与旧模式兼容 |
+| `low` | 仅响应外部系统事件（群消息流、工具结果等） | QQ 机器人接入 |
+| `medium` | 系统事件 + 空闲兜底（超过阈值未交互则主动搭话） | 私聊陪伴 |
+
+**时间感知**：启用 `time_awareness` 后，system prompt 自动注入 `<current_time>` 标签，Neuro 能感知当前时间（凌晨、深夜等）。
+
+```python
+from src.agent_loop import AgentLoop, AgentEvent
+
+loop = AgentLoop(pipeline, agent_config, output_callback=print)
+loop.start()
+
+# 用户消息 → 事件队列
+loop.push(AgentEvent(type="message", content="你好"))
+
+# 系统事件 → 事件队列（low/medium 档位响应）
+loop.push(AgentEvent(type="system", content="群里有人在讨论 AI"))
+
+loop.stop()  # 写入长期记忆后退出
+```
+
 ## 项目结构
 
 ```
@@ -118,6 +177,7 @@ neuro_like_system/
 │
 ├── src/
 │   ├── inference_pipeline.py  # 核心：LLMClient + NeuroLikePipeline
+│   ├── agent_loop.py          # Agent 事件循环（AgentLoop + AgentEvent）
 │   ├── memory_manager.py      # 分级记忆管理器（L1-L4, Mem0, Qdrant）
 │   ├── quick_test.py          # 测试脚本（多模式：API/BERT/记忆/跨session）
 │   ├── logger.py              # loguru 日志配置
@@ -187,6 +247,14 @@ neuro_like_system/
   "annotation": {
     "primary_provider": "deepseek",  // 标注用的 LLM（低成本）
     "fallback_provider": "openai"    // 备用标注 LLM
+  },
+
+  "agent": {
+    "proactive_level": "off",        // "off" | "low" | "medium"
+    "idle_threshold_seconds": 300,   // medium 档位空闲多久后主动说话
+    "proactive_interval_seconds": 30,// 主动发言最小间隔（防刷屏）
+    "time_awareness": true,          // system prompt 注入当前时间
+    "tick_interval": 2               // 事件循环检查间隔（秒）
   }
 }
 ```
@@ -222,6 +290,13 @@ python src/quick_test.py --memory-test --compress-at 300 --protected-turns 2
 
 # 5. 跨 session 记忆召回测试
 python src/quick_test.py --memory-test --cross-session --compress-at 300
+
+# 6. Agent 事件循环测试（交互式，输入 quit 退出）
+python src/quick_test.py --agent-test
+
+# 7. Agent 主动发言测试（先改 config.json 中 proactive_level 为 "medium"）
+#    打几句话后停止输入，等 idle_threshold 后 Neuro 会主动搭话
+python src/quick_test.py --agent-test
 ```
 
 ### 交互式对话
@@ -334,6 +409,7 @@ BERT 模型缓存到本地后，`inference_pipeline.py` 启动时自动检测缓
 
 ## 远期规划
 
+- [x] Agent 事件循环（主动发言、时间感知）
 - [ ] QQ 机器人接入（群聊注意力判断）
 - [ ] behavior/tone 标签补全并重新训练
 - [ ] 外部数据集补充（SMP2020 EWECT 解决类别不平衡）

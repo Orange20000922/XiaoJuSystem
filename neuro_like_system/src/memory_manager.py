@@ -64,6 +64,20 @@ _FACT_EXTRACTION_PROMPT = """从以下会话状态记录中抽取用户的长期
 格式：["事实1", "事实2", ...]"""
 
 
+# L4 用户画像构建 prompt
+_PROFILE_COMPACT_PROMPT = """从以下对话片段中提取用户的稳定特征，输出 JSON 数组。
+每条标签格式：{"tag": "标签名", "value": "具体内容", "confidence": 0.0-1.0}
+标签类别：interests（兴趣爱好）、personality（性格特点）、preferences（偏好习惯）、
+          background（背景信息）、relationship（与AI的关系模式）
+只输出 JSON 数组，不要任何解释。若无有效信息则输出空数组 []。"""
+
+# L4 情绪推断 prompt（策略 B 回退：从纯文本推断情绪）
+_EMOTION_INFER_PROMPT = """分析以下对话片段，判断用户的情绪状态。
+输出 JSON：{"emotion": "情绪标签", "intensity": 0.0-1.0}
+情绪标签从以下选择：joy, sadness, anger, fear, surprise, disgust, neutral, excitement, tenderness, curiosity
+只输出 JSON，不要任何解释。"""
+
+
 class HierarchicalMemoryManager:
     """
     分级记忆管理器
@@ -85,11 +99,11 @@ class HierarchicalMemoryManager:
         self,
         config: MemoryConfig,
         llm_client: "LLMClient",
-        user_id: str = "default",
+        user_id: str = None,
     ):
         self.config = config
         self.llm_client = llm_client
-        self.user_id = user_id
+        self.user_id = user_id or config.user_id or "owner"
         self.session_id = f"session_{int(time.time())}"
 
         # L1
@@ -105,8 +119,17 @@ class HierarchicalMemoryManager:
         # Mem0 的 embedder 通过环境变量读取 OpenAI endpoint
         if config.mem0_api_key:
             os.environ["OPENAI_API_KEY"] = config.mem0_api_key
-        if config.mem0_base_url:
+        if config.mem0_base_url and config.mem0_llm_provider == "openai":
             os.environ["OPENAI_BASE_URL"] = config.mem0_base_url
+
+        # 构建 Mem0 LLM 配置（支持 anthropic / openai-compatible 两种 provider）
+        llm_cfg: dict = {
+            "model": config.mem0_llm_model,
+            "temperature": config.mem0_llm_temperature,
+            "api_key": config.mem0_api_key,
+        }
+        if config.mem0_llm_provider == "openai" and config.mem0_base_url:
+            llm_cfg["openai_base_url"] = config.mem0_base_url
 
         mem0_cfg: Dict = {
             "vector_store": {
@@ -119,12 +142,8 @@ class HierarchicalMemoryManager:
                 },
             },
             "llm": {
-                "provider": "anthropic",
-                "config": {
-                    "model": config.mem0_llm_model,
-                    "temperature": config.mem0_llm_temperature,
-                    "api_key": config.mem0_api_key,
-                },
+                "provider": config.mem0_llm_provider,
+                "config": llm_cfg,
             },
             "embedder": {
                 "provider": "huggingface",
@@ -135,10 +154,12 @@ class HierarchicalMemoryManager:
         }
         self.mem0 = Memory.from_config(mem0_cfg)
 
-        # Mem0 内部的 Anthropic 客户端会读环境变量 ANTHROPIC_AUTH_TOKEN，
-        # 导致同时发送 x-api-key 和 Authorization header，代理报 401。
-        # 用 httpx event hook 剥掉 Authorization header。
-        if hasattr(self.mem0, "llm") and hasattr(self.mem0.llm, "client"):
+        # Anthropic 专属修复：SDK 会同时发 x-api-key 和 Authorization: Bearer，
+        # 代理报 401。用 httpx event hook 剥掉 Authorization header。
+        # OpenAI-compatible provider（DeepSeek 等）不需要此 patch。
+        if (config.mem0_llm_provider == "anthropic"
+                and hasattr(self.mem0, "llm")
+                and hasattr(self.mem0.llm, "client")):
             import anthropic, httpx
 
             def _strip_bearer(request: httpx.Request):
@@ -229,14 +250,24 @@ class HierarchicalMemoryManager:
           1. 压缩保护区以外的剩余 L1
           2. 从本次会话的状态快照中抽取长期事实写入 L3
         """
+        from src.logger import logger
+
         # 保护区最近几轮原文写入 L3，保证下次 session 能召回最近对话细节
+        # 策略 A：在每轮前附加情绪标签，供 L4 画像构建时过滤
         protected = self.working_memory[-self.PROTECTED_TURNS:]
+        logger.info(f"close_session: protected turns={len(protected)}")
         if protected:
-            recent = "\n".join(turn_to_text(t) for t in protected)
+            lines = []
+            for t in protected:
+                tag = f"[emotion={t.emotion},intensity={t.intensity:.2f}]" if t.emotion else ""
+                lines.append(f"{tag} {turn_to_text(t)}")
+            recent = "\n".join(lines)
+            logger.info(f"close_session: writing {len(recent)} chars to L3 with emotion tags")
             self.mem0.add(
                 [{"role": "assistant", "content": f"[最近对话] {recent}"}],
                 user_id=self.user_id,
             )
+            logger.info("close_session: L3 write done")
 
         # 压缩剩余可压缩区
         n = len(self.working_memory)
@@ -272,6 +303,14 @@ class HierarchicalMemoryManager:
                 user_id=self.user_id,  # 无 session_id → L3 持久化
             )
 
+        # L4 用户画像构建（基于本次 session 写入的 L3 强情绪片段）
+        try:
+            logger.info("close_session: triggering L4 profile build...")
+            self.build_user_profile_l4()
+            logger.info("close_session: L4 profile build done")
+        except Exception as e:
+            logger.warning(f"L4 画像构建失败（不影响主流程）: {e}")
+
     # ── L4 显式写入 ───────────────────────────────────────────────────────
 
     def add_knowledge(self, content: str):
@@ -282,26 +321,155 @@ class HierarchicalMemoryManager:
             user_id=self.user_id,
         )
 
+    def build_user_profile_l4(
+        self,
+        intensity_threshold: float = 0.6,
+        max_entries: int = 20,
+    ):
+        """
+        扫描 L3，提取强情绪片段，用 LLM compact 生成用户画像标签写入 L4。
+
+        策略 A：优先使用 L3 中的 [emotion=xxx,intensity=x.xx] 标签过滤。
+        策略 B：若某条 L3 记录无情绪标签（旧数据），用 LLM 从文本推断情绪作为回退。
+
+        Args:
+            intensity_threshold: 情绪强度过滤阈值（默认 0.6）
+            max_entries: 最多处理的 L3 条目数（避免 token 爆炸）
+        """
+        import re
+
+        # 拉取所有 L3 记录
+        all_l3 = self.mem0.get_all(user_id=self.user_id)
+        if not all_l3 or not all_l3.get("results"):
+            from src.logger import logger
+            logger.info("L4 画像构建：L3 无记录，跳过")
+            return
+
+        results = all_l3["results"][:max_entries]
+
+        # ── 过滤强情绪片段 ────────────────────────────────────────────────
+        strong_entries = []
+        _emotion_tag_re = re.compile(
+            r"\[emotion=(\w+),intensity=([0-9.]+)\]"
+        )
+
+        for r in results:
+            text = r.get("memory", "")
+            if not text:
+                continue
+
+            # 策略 A：解析情绪标签
+            matches = _emotion_tag_re.findall(text)
+            if matches:
+                # 取最高强度
+                max_intensity = max(float(intensity) for _, intensity in matches)
+                if max_intensity >= intensity_threshold:
+                    strong_entries.append(text)
+                continue
+
+            # 策略 B：无标签，用 LLM 推断情绪
+            try:
+                raw = self.llm_client.generate(
+                    system_prompt=_EMOTION_INFER_PROMPT,
+                    user_input=text[:500],  # 截断避免 token 过多
+                    max_tokens=50,
+                    temperature=0.1,
+                )
+                inferred = json.loads(raw)
+                if float(inferred.get("intensity", 0)) >= intensity_threshold:
+                    strong_entries.append(text)
+            except Exception:
+                pass  # 推断失败则跳过该条
+
+        if not strong_entries:
+            from src.logger import logger
+            logger.info(f"L4 画像构建：无强情绪片段（阈值={intensity_threshold}），跳过")
+            return
+
+        # ── 统计词频预处理（过滤低信息量片段）────────────────────────────
+        from collections import Counter
+        import jieba
+
+        word_freq: Counter = Counter()
+        for entry in strong_entries:
+            # 去掉标签头，只统计对话正文
+            clean = _emotion_tag_re.sub("", entry)
+            clean = re.sub(r"\[最近对话\]|\[状态快照\]", "", clean)
+            words = [w for w in jieba.cut(clean) if len(w) > 1]
+            word_freq.update(words)
+
+        # 高频词（出现 3 次以上）作为关键词提示注入 prompt
+        keywords = [w for w, c in word_freq.most_common(20) if c >= 3]
+
+        # ── LLM compact → 结构化画像标签 ─────────────────────────────────
+        combined_text = "\n---\n".join(strong_entries[:10])  # 最多 10 条
+        keyword_hint = f"\n\n关键词参考（高频出现）：{', '.join(keywords)}" if keywords else ""
+
+        raw_profile = self.llm_client.generate(
+            system_prompt=_PROFILE_COMPACT_PROMPT,
+            user_input=combined_text + keyword_hint,
+            max_tokens=600,
+            temperature=0.1,
+        )
+
+        try:
+            tags = json.loads(raw_profile)
+            if not isinstance(tags, list) or not tags:
+                return
+            # 过滤低置信度标签
+            tags = [t for t in tags if isinstance(t, dict) and t.get("confidence", 0) >= 0.5]
+        except json.JSONDecodeError:
+            tags = []
+
+        if not tags:
+            from src.logger import logger
+            logger.info("L4 画像构建：LLM 未返回有效标签")
+            return
+
+        # ── 写入 L4 ───────────────────────────────────────────────────────
+        profile_content = f"[用户画像] {json.dumps(tags, ensure_ascii=False)}"
+        self.add_knowledge(profile_content)
+
+        from src.logger import logger
+        logger.info(f"L4 画像构建完成：{len(tags)} 条标签写入 L4")
+
+
     # ── 召回与 prompt 组装 ────────────────────────────────────────────────
 
     def get_system_context(self, query: str) -> str:
         """
         返回注入 system prompt 的跨会话上下文（L2/L3/L4 召回）。
         L1 原文不在这里，走 get_messages_history()。
+        L2/L3/L4 三次 Qdrant search 并行执行。
         """
+        from concurrent.futures import ThreadPoolExecutor
+
         sections = []
 
-        l2 = self.mem0.search(
-            query=query,
-            user_id=self.user_id,
-            run_id=self.session_id,
-            limit=self.config.l3_search_limit,
-        )
-        l3 = self.mem0.search(
-            query=query,
-            user_id=self.user_id,
-            limit=self.config.l3_search_limit,
-        )
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            f_l2 = executor.submit(
+                self.mem0.search,
+                query=query,
+                user_id=self.user_id,
+                run_id=self.session_id,
+                limit=self.config.l3_search_limit,
+            )
+            f_l3 = executor.submit(
+                self.mem0.search,
+                query=query,
+                user_id=self.user_id,
+                limit=self.config.l3_search_limit,
+            )
+            f_l4 = executor.submit(
+                self.mem0.search,
+                query=query,
+                agent_id="neuro_agent",
+                limit=self.config.l4_search_limit,
+            )
+            l2 = f_l2.result()
+            l3 = f_l3.result()
+            l4 = f_l4.result()
+
         combined = self._merge(l2, l3)
         if combined:
             sections.append(
@@ -311,15 +479,9 @@ class HierarchicalMemoryManager:
             # 语义搜索没命中具体内容，但 L3 确实有历史记录
             sections.append(
                 "<has_memory>你们之前聊过天，你记得这个人，但一时想不起具体聊了什么。"
-                "像正常人一样回应，比如'嗯我们之前聊过的'、'你提醒一下我，上次聊到哪了'，"
-                "绝对不要说'这是第一次对话'，也不要提到记忆系统、数据、调取之类的词。</has_memory>"
+                "不要说'这是第一次对话'，也不要提到记忆系统、数据、调取之类的词。</has_memory>"
             )
 
-        l4 = self.mem0.search(
-            query=query,
-            agent_id="neuro_agent",
-            limit=self.config.l4_search_limit,
-        )
         l4_items = self._filter(l4)
         if l4_items:
             sections.append(

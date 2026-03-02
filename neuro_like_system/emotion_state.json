@@ -1,0 +1,15 @@
+{
+  "valence": 0.0128,
+  "arousal": 0.3471,
+  "turn_count": 170,
+  "last_emotion": "neutral",
+  "config": {
+    "alpha": 0.7,
+    "beta": 0.25,
+    "gamma": 0.3,
+    "noise_sigma": 0.05,
+    "injection_threshold": 0.12,
+    "save_interval_turns": 5,
+    "persist_to_l4": true
+  }
+}

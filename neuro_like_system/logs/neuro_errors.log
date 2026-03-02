@@ -452,3 +452,186 @@ Check the documentation of torch.load to learn more about types accepted by defa
 	WeightsUnpickler error: Unsupported global: GLOBAL configs.model_config.JointModelConfigLowVRAM was not an allowed global by default. Please use `torch.serialization.add_safe_globals([configs.model_config.JointModelConfigLowVRAM])` or the `torch.serialization.safe_globals([configs.model_config.JointModelConfigLowVRAM])` context manager to allowlist this global if you trust this class/function.
 
 Check the documentation of torch.load to learn more about types accepted by default with weights_only https://pytorch.org/docs/stable/generated/torch.load.html.
+2026-03-01 19:12:09.518 | WARNING  | src.inference_pipeline:_analyze_emotion_with_fusion:625 - LLM emotion classification timeout
+2026-03-01 19:12:10.437 | WARNING  | src.emotion_fusion:classify:110 - LLM 返回非 JSON 格式: Expecting value: line 1 column 1 (char 0)
+2026-03-01 19:12:18.613 | WARNING  | src.emotion_fusion:classify:110 - LLM 返回非 JSON 格式: Expecting value: line 1 column 1 (char 0)
+2026-03-01 19:12:28.829 | WARNING  | src.emotion_fusion:classify:110 - LLM 返回非 JSON 格式: Expecting value: line 1 column 1 (char 0)
+2026-03-01 19:12:35.255 | WARNING  | src.emotion_fusion:classify:110 - LLM 返回非 JSON 格式: Expecting value: line 1 column 1 (char 0)
+2026-03-01 19:12:44.895 | WARNING  | src.emotion_fusion:classify:110 - LLM 返回非 JSON 格式: Expecting value: line 1 column 1 (char 0)
+2026-03-01 19:12:51.966 | WARNING  | src.emotion_fusion:classify:110 - LLM 返回非 JSON 格式: Expecting value: line 1 column 1 (char 0)
+2026-03-02 20:45:12.667 | WARNING  | __main__:generate:249 - LLM 请求失败 attempt=1/3 status=None error=Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/errors#long-requests for more details. 等待 1.0s 后重试...
+2026-03-02 22:44:15.267 | ERROR    | src.proactive_decision:decide:105 - 主动决策失败: Request timed out.
+2026-03-02 22:44:26.472 | ERROR    | src.proactive_decision:decide:105 - 主动决策失败: Request timed out.
+2026-03-02 22:44:37.404 | ERROR    | src.proactive_decision:decide:105 - 主动决策失败: Request timed out.
+2026-03-02 23:11:17.411 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:11:28.411 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:12:11.480 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:12:22.328 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:12:24.361 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:12:35.213 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:12:37.246 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:12:48.236 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:12:50.277 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:13:01.334 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:13:03.373 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:13:14.316 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:13:16.360 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:13:27.250 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:13:29.285 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:13:40.383 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:13:42.422 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:13:53.446 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:13:55.482 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:14:06.542 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:14:08.584 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:14:19.633 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:14:21.673 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:14:32.713 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:14:34.759 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:14:45.677 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:14:47.712 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:14:58.707 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:15:00.746 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:15:11.792 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:15:13.838 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:15:24.924 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:15:26.972 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:15:38.014 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:15:40.045 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:15:51.061 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:15:53.108 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:16:04.062 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:16:06.100 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:16:17.067 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:16:19.105 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:16:30.103 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:16:32.136 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:16:43.347 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:16:45.382 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:16:56.202 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:16:58.242 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:17:09.223 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:17:11.257 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:17:22.091 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:17:24.136 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:17:34.961 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:17:37.003 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:17:47.937 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:17:49.981 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:18:00.975 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:18:03.019 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:18:13.909 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:18:15.950 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:18:26.950 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:18:28.990 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:18:39.826 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:18:41.858 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:18:52.729 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:18:54.764 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:19:05.692 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:19:07.726 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:19:18.527 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:19:20.560 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:19:31.444 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:19:33.473 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:19:44.469 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:19:46.509 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:19:57.474 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:19:59.517 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:20:10.499 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:20:12.543 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:20:23.521 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:20:25.562 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:20:36.420 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:20:38.455 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:20:49.295 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:20:51.327 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:21:02.064 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:21:04.093 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:21:14.967 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:21:16.997 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:21:27.961 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:21:29.998 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:21:40.878 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:21:42.922 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:21:53.816 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:21:55.848 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:22:06.891 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:22:08.932 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:22:19.933 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:22:21.966 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:22:32.860 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:22:34.896 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:22:45.731 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:22:47.769 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:22:58.814 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:23:00.851 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:23:11.781 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:23:13.822 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:23:24.696 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:23:26.733 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:23:37.780 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:23:39.813 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:23:50.887 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:23:52.926 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:24:04.028 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:24:06.060 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:24:17.180 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:24:19.218 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:24:30.175 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:24:32.214 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:24:43.268 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:24:45.312 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:24:56.370 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:24:58.404 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:25:09.439 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:25:11.483 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:25:22.457 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:25:24.500 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:25:35.527 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:25:37.574 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:25:48.535 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:25:50.571 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:26:01.518 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:26:03.551 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:26:14.482 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:26:16.524 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:26:27.437 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:26:29.468 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:26:40.402 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:26:42.435 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:26:53.399 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:26:55.432 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:27:06.342 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:27:08.386 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:27:19.479 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:27:21.521 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:27:32.463 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:27:34.496 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:27:45.385 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:27:47.416 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:27:58.352 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:28:00.389 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:28:11.429 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:28:13.463 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:28:24.345 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:28:26.374 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:28:37.375 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:28:39.407 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:28:50.420 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:28:52.450 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:29:03.392 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:29:05.425 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:29:16.501 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:29:18.534 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:29:29.464 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:29:31.500 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:29:42.447 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:29:44.478 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:29:55.468 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:29:57.502 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:30:08.881 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:30:10.914 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:30:21.815 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-02 23:30:23.848 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
+2026-03-02 23:31:42.888 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.

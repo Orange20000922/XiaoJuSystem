@@ -18,6 +18,7 @@ import os
 import torch
 import json
 import time
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -45,12 +46,16 @@ from configs.model_config import (
     PersonalityConfig,
     DEFAULT_PERSONALITY,
     EmotionPromptConfig,
+    EmotionFusionConfig,
+    EmotionStateConfig,
     LLMConfig,
     LLMProvider,
     MemoryConfig,
 )
 from configs.config_loader import AppConfig
 from src.memory_manager import HierarchicalMemoryManager
+from src.emotion_fusion import LLMEmotionClassifier, EmotionNeuronFusion
+from src.emotion_state import EmotionStateTracker, EmotionState
 
 
 class ChatMode(Enum):
@@ -160,20 +165,31 @@ class LLMClient:
 
     def generate(
         self,
-        system_prompt: str,
-        user_input: str,
+        system_prompt: str = None,
+        user_input: str = "",
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
         history: Optional[List[Dict]] = None,
+        system_blocks: Optional[List[Dict]] = None,
     ) -> str:
         """
         生成回复，带指数退避重试。
+
+        Args:
+            system_prompt: 单块 system prompt（向后兼容）
+            system_blocks: 多块 system prompt（优先使用，用于 Anthropic 缓存优化）
+            user_input: 用户输入
+            max_tokens: 最大 token 数
+            temperature: 温度
+            history: 对话历史（OpenAI 格式）
 
         可重试错误（网络/限流/服务端临时故障）：最多 max_retries 次。
         不可重试错误（认证失败/请求参数非法）：立即抛出，不重试。
         """
         max_tokens = max_tokens or self.config.max_tokens
         temperature = temperature or self.config.temperature
+        top_p = top_p or self.config.top_p
 
         delay = self.config.retry_delay
 
@@ -188,16 +204,20 @@ class LLMClient:
                     if self.config.use_responses_api:
                         result = self._generate_responses_api(
                             system_prompt, user_input, max_tokens, temperature,
+                            top_p=top_p,
                             history=history,
                         )
                     else:
                         result = self._generate_openai_compatible(
                             system_prompt, user_input, max_tokens, temperature,
+                            top_p=top_p,
                             history=history,
                         )
                 else:
                     result = self._generate_anthropic(
                         system_prompt, user_input, max_tokens, temperature,
+                        top_p=top_p,
+                        system_blocks=system_blocks,
                     )
                 logger.debug(f"LLM 响应成功 长度={len(result)} chars")
                 return result
@@ -241,6 +261,7 @@ class LLMClient:
         user_input: str,
         max_tokens: int,
         temperature: float,
+        top_p: Optional[float] = None,
         history: Optional[List[Dict]] = None,
     ) -> str:
         """
@@ -257,7 +278,7 @@ class LLMClient:
             messages=messages,
             max_tokens=max_tokens,
             temperature=temperature,
-            top_p=self.config.top_p,
+            top_p=top_p if top_p is not None else self.config.top_p,
             frequency_penalty=self.config.frequency_penalty,
             presence_penalty=self.config.presence_penalty,
         )
@@ -269,6 +290,7 @@ class LLMClient:
         user_input: str,
         max_tokens: int,
         temperature: float,
+        top_p: Optional[float] = None,
         history: Optional[List[Dict]] = None,
     ) -> str:
         """OpenAI Responses API（/v1/responses）格式生成"""
@@ -282,7 +304,7 @@ class LLMClient:
             input=input_messages,
             max_output_tokens=max_tokens,
             temperature=temperature,
-            top_p=self.config.top_p,
+            top_p=top_p if top_p is not None else self.config.top_p,
         )
         return response.output[0].content[0].text
 
@@ -291,22 +313,37 @@ class LLMClient:
         system_prompt: str,
         user_input: str,
         max_tokens: int,
-        temperature: float
+        temperature: float,
+        top_p: Optional[float] = None,
+        system_blocks: Optional[List[Dict]] = None
     ) -> str:
-        """Anthropic API生成（system prompt 标记 cache_control 启用缓存）"""
-        response = self.client.messages.create(
-            model=self.model,
-            system=[
+        """
+        Anthropic API生成（支持多块 system prompt 以优化缓存）
+
+        Args:
+            system_prompt: 单块 system prompt（向后兼容）
+            system_blocks: 多块 system prompt（优先使用，用于缓存优化）
+        """
+        if system_blocks:
+            # 使用多块 system prompt（缓存优化）
+            system_content = system_blocks
+        else:
+            # 向后兼容：单块 system prompt
+            system_content = [
                 {
                     "type": "text",
                     "text": system_prompt,
                     "cache_control": {"type": "ephemeral"},
                 }
-            ],
+            ]
+
+        response = self.client.messages.create(
+            model=self.model,
+            system=system_content,
             messages=[{"role": "user", "content": user_input}],
             max_tokens=max_tokens,
             temperature=temperature,
-            top_p=self.config.top_p,
+            top_p=top_p if top_p is not None else self.config.top_p,
         )
         import re
         # 优先取 text 类型 block，过滤 thinking block
@@ -352,18 +389,20 @@ class LLMClient:
         return cls(config)
 
 
-# 情绪 → max_tokens 权重（基于对话场景的合理回复长度）
+# 情绪 → max_tokens 权重（相对于 config.max_tokens）
+# config.max_tokens=400000 是理论上限，权重控制实际使用量
+# 目标：大部分场景在 5K-15K tokens，保证对话质量和自然展开
 _EMOTION_TOKEN_WEIGHTS = {
-    "neutral":    0.6,   # 日常闲聊，简短
-    "joy":        0.8,   # 开心，自然回应不用太长
-    "excitement": 0.9,   # 兴奋，稍微展开
-    "sadness":    1.2,   # 安慰需要更多话
-    "fear":       1.1,   # 给安全感，适当展开
-    "anger":      1.0,   # 认可情绪，不长篇大论
-    "disgust":    0.8,   # 简短回应
-    "surprise":   1.0,   # 视情况
-    "tenderness": 1.0,   # 温暖回应
-    "curiosity":  1.4,   # 好奇心需要详细回答
+    "neutral":    0.0125,  # 日常闲聊 → 5K tokens
+    "joy":        0.02,    # 开心 → 8K tokens
+    "excitement": 0.025,   # 兴奋 → 10K tokens
+    "sadness":    0.03,    # 安慰需要更多话 → 12K tokens
+    "fear":       0.03,    # 给安全感 → 12K tokens
+    "anger":      0.025,   # 认可情绪 → 10K tokens
+    "disgust":    0.02,    # 简短回应 → 8K tokens
+    "surprise":   0.025,   # 视情况 → 10K tokens
+    "tenderness": 0.025,   # 温暖回应 → 10K tokens
+    "curiosity":  0.0375,  # 好奇心需要详细回答 → 15K tokens
 }
 
 
@@ -386,12 +425,15 @@ class NeuroLikePipeline:
         llm_secondary_config: Optional[LLMConfig] = None,
         memory_config: Optional[MemoryConfig] = None,
         emotion_prompt_config: Optional[EmotionPromptConfig] = None,
+        emotion_fusion_config: Optional[EmotionFusionConfig] = None,
+        emotion_state_config: Optional[EmotionStateConfig] = None,
         # 向后兼容的参数
         llm_provider: Optional[str] = None,
         llm_api_key: Optional[str] = None,
         llm_model: Optional[str] = None,
         llm_base_url: Optional[str] = None,
-        device: str = "cpu"
+        device: str = "cpu",
+        time_awareness: bool = True,
     ):
         """
         初始化Pipeline
@@ -403,11 +445,13 @@ class NeuroLikePipeline:
             llm_secondary_config: 副 LLM 配置（DeepSeek 等廉价模型，群聊默认）
             memory_config: 记忆系统配置
             emotion_prompt_config: BERT 输出 → Prompt 指令映射配置
+            emotion_fusion_config: BERT + LLM 情绪融合配置
             device: 运行设备
         """
         self.personality = personality
         self.device = device
         self.emotion_prompt_config = emotion_prompt_config
+        self.time_awareness = time_awareness
 
         # 加载小模型（BERT 不可用时回退为 None，纯 LLM 模式）
         try:
@@ -450,6 +494,23 @@ class NeuroLikePipeline:
         else:
             self.llm_client_secondary = None
 
+        # 情绪融合（BERT + LLM）
+        self.emotion_fusion_config = emotion_fusion_config
+        if emotion_fusion_config and emotion_fusion_config.enabled and emotion_prompt_config:
+            llm_for_emotion = self.llm_client_secondary or self.llm_client
+            self.llm_emotion_classifier = LLMEmotionClassifier(
+                llm_client=llm_for_emotion,
+                temperature=emotion_fusion_config.llm_temperature
+            )
+            self.emotion_fusion = EmotionNeuronFusion(
+                config=emotion_fusion_config,
+                emotion_reliability=emotion_prompt_config.emotion_reliability
+            )
+            logger.info("情绪融合系统已启用")
+        else:
+            self.llm_emotion_classifier = None
+            self.emotion_fusion = None
+
         # 记忆管理器
         if memory_config is not None:
             self.memory = HierarchicalMemoryManager(
@@ -458,6 +519,20 @@ class NeuroLikePipeline:
             )
         else:
             self.memory = MemoryManager()
+
+        # 情绪状态机
+        self.emotion_state_config = emotion_state_config
+        if emotion_state_config:
+            initial = self._load_emotion_state()
+            self.emotion_state_tracker = EmotionStateTracker(
+                config=emotion_state_config, initial_state=initial
+            )
+            logger.info(
+                f"情绪状态机已启用 v={self.emotion_state_tracker.state.valence:.2f} "
+                f"a={self.emotion_state_tracker.state.arousal:.2f}"
+            )
+        else:
+            self.emotion_state_tracker = None
 
         # 人格向量
         self.personality_vector = torch.tensor(
@@ -477,7 +552,10 @@ class NeuroLikePipeline:
             llm_secondary_config=app_cfg.llm_secondary,
             memory_config=app_cfg.memory,
             emotion_prompt_config=app_cfg.emotion_prompts,
+            emotion_fusion_config=app_cfg.emotion_fusion,
+            emotion_state_config=app_cfg.emotion_state_config,
             device=app_cfg.device,
+            time_awareness=app_cfg.agent.time_awareness,
         )
 
     def _load_checkpoint(self, checkpoint_path: str):
@@ -504,12 +582,74 @@ class NeuroLikePipeline:
         )
         return result
 
+    def _analyze_emotion_with_fusion(self, text: str, use_fusion: bool = False) -> Optional[Dict]:
+        """
+        情绪分析（支持 BERT-only 或 BERT+LLM 融合）。
+
+        Args:
+            text: 输入文本
+            use_fusion: 是否启用融合（False=BERT-only，True=融合）
+
+        Returns:
+            emotion_behavior dict
+        """
+        if not use_fusion or self.emotion_fusion is None:
+            # BERT-only 模式
+            return self.analyze_emotion_behavior(text)
+
+        # 融合模式：并行调用 BERT + LLM
+        bert_result = None
+        llm_result = None
+
+        # 优化：BERT 置信度很高时跳过 LLM
+        quick_bert = self.analyze_emotion_behavior(text)
+        if quick_bert:
+            bert_prob = quick_bert["emotion"].get("primary_prob", 0.0)
+            emotion = quick_bert["emotion"]["primary"]
+            reliability = self.emotion_prompt_config.emotion_reliability.get(emotion, 0.7)
+            eff_conf = bert_prob * reliability
+
+            if eff_conf >= self.emotion_fusion_config.skip_llm_threshold:
+                logger.debug(f"Skip LLM: BERT eff_conf={eff_conf:.2f} >= {self.emotion_fusion_config.skip_llm_threshold}")
+                return quick_bert
+
+            bert_result = quick_bert
+
+        # 并行调用 LLM
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            llm_future = executor.submit(self.llm_emotion_classifier.classify, text, self.emotion_fusion_config.llm_timeout)
+            try:
+                llm_result = llm_future.result(timeout=self.emotion_fusion_config.llm_timeout + 1)
+            except FutureTimeoutError:
+                logger.warning("LLM emotion classification timeout")
+            except Exception as e:
+                logger.warning(f"LLM emotion classification failed: {e}")
+
+        # 融合
+        if bert_result:
+            fused = self.emotion_fusion.fuse(bert_result, llm_result)
+            if llm_result:
+                logger.debug(
+                    f"Fused: {fused['emotion']['primary']} "
+                    f"(BERT: {bert_result['emotion']['primary']}, "
+                    f"LLM: {llm_result['emotion']}, "
+                    f"agree: {fused['emotion']['_fusion_meta']['agreement']})"
+                )
+            return fused
+
+        # Fallback
+        return self.analyze_emotion_behavior(text)
+
     def build_system_prompt(self, recalled_context: str = "",
                             emotion_analysis: Optional[Dict] = None) -> str:
         """
-        构建 system prompt。
-        包含：人格 + BERT 情绪指令（可选）+ L2/L3/L4 跨会话召回。
+        构建 system prompt（单块模式，向后兼容）。
+        包含：人格 + 情感分析结果（强制接受）+ L2/L3/L4 跨会话召回。
         L1 原文通过 messages 数组单独传入，不在这里。
+
+        改进：将情感判断完全从 Claude 中剥离，用强制性语言命令 Claude 接受
+        情感系统的标签判断，降低 Claude 自行判断情绪的可能。
         """
         p = self.personality
 
@@ -529,16 +669,103 @@ class NeuroLikePipeline:
 
         prompt = f"你是{p.name}。\n<persona>{personality_section}</persona>"
 
-        # BERT 情绪指令注入
+        # 时间感知注入
+        if self.time_awareness:
+            now = datetime.now().strftime("%Y年%m月%d日 %H:%M")
+            prompt += f"\n<current_time>{now}</current_time>"
+
+        # 情感指令注入（仅自然语言指引，结构化数据走日志不进 prompt）
         if emotion_analysis and self.emotion_prompt_config:
             directives = self._build_emotion_directives(emotion_analysis)
             if directives:
-                prompt += f"\n<emotion_context>{directives}</emotion_context>"
+                prompt += f"\n<mood>\n{directives}\n</mood>"
 
         if recalled_context:
             prompt += f"\n{recalled_context}"
-        prompt += "\n根据人格和对话历史自然回复，保持一致性。"
+
+        # 情绪状态暗示
+        if self.emotion_state_tracker:
+            hint = self.emotion_state_tracker.get_prompt_hint()
+            if hint:
+                prompt += f"\n<feeling>{hint}</feeling>"
+
+        prompt += "\n自然回复就好。"
         return prompt
+
+    def build_system_prompt_blocks(self, recalled_context: str = "",
+                                   emotion_analysis: Optional[Dict] = None) -> List[Dict]:
+        """
+        构建多块 system prompt（用于 Anthropic 缓存优化）。
+
+        缓存策略：
+        - Block 1（静态，可缓存）：人格描述 + 通用指令
+        - Block 2（半静态，可缓存）：跨会话记忆召回（L2/L3/L4）
+        - Block 3（动态，不缓存）：情感分析结果（每轮变化）
+
+        Returns:
+            List[Dict]: Anthropic system blocks with cache_control
+        """
+        p = self.personality
+        blocks = []
+
+        # ── Block 1: 静态人格 + 通用指令（可缓存）────────────────────
+        if p.description.strip():
+            personality_section = p.description.strip()
+        else:
+            formality_str = (
+                "口语" if p.formality < 0.4 else
+                "适中" if p.formality < 0.7 else "正式"
+            )
+            personality_section = (
+                f"[标签]{','.join(p.traits)} "
+                f"[开放]{p.openness:.1f} [外向]{p.extraversion:.1f} "
+                f"[幽默]{p.humor_tendency:.1f} [共情]{p.empathy_level:.1f} "
+                f"[好奇]{p.curiosity_level:.1f} [风格]{formality_str}"
+            )
+
+        static_prompt = f"你是{p.name}。\n<persona>{personality_section}</persona>"
+
+        # 时间感知注入（每分钟变化，但缓存 5 分钟内有效）
+        if self.time_awareness:
+            now = datetime.now().strftime("%Y年%m月%d日 %H:%M")
+            static_prompt += f"\n<current_time>{now}</current_time>"
+
+        static_prompt += "\n自然回复就好。"
+
+        blocks.append({
+            "type": "text",
+            "text": static_prompt,
+            "cache_control": {"type": "ephemeral"}
+        })
+
+        # ── Block 2: 跨会话记忆召回（半静态，可缓存）────────────────
+        if recalled_context:
+            blocks.append({
+                "type": "text",
+                "text": recalled_context,
+                "cache_control": {"type": "ephemeral"}
+            })
+
+        # ── Block 3: 情感指令（动态，不缓存）─────────────────────────────
+        # 结构化数据（情绪类型/强度/置信度等）走日志，prompt 只注入自然语言指引
+        if emotion_analysis and self.emotion_prompt_config:
+            directives = self._build_emotion_directives(emotion_analysis)
+            if directives:
+                blocks.append({
+                    "type": "text",
+                    "text": f"<mood>\n{directives}\n</mood>"
+                })
+
+        # ── Block 4: 情绪状态暗示（可选，动态，不缓存）──────────────────
+        if self.emotion_state_tracker:
+            hint = self.emotion_state_tracker.get_prompt_hint()
+            if hint:
+                blocks.append({
+                    "type": "text",
+                    "text": f"<feeling>{hint}</feeling>"
+                })
+
+        return blocks
 
     def _build_emotion_directives(self, emotion_analysis: Dict) -> str:
         """
@@ -576,38 +803,54 @@ class NeuroLikePipeline:
             elif effective_conf >= weak_thr:
                 # 中置信度：不确定注入，去掉"用户"开头避免"用户可能用户..."重复
                 stripped = emotion_directive.lstrip("用户")
-                parts.append(f"用户可能{stripped}，但不确定，结合上下文判断")
+                parts.append(f"好像{stripped}，但也说不准")
 
         # behavior/tone head 未经专项训练，预测为噪声，暂不注入
         # 待 behavior/tone 标签补全并重新训练后再启用
 
-        return "。".join(parts) if parts else ""
+        directive = "。".join(parts) if parts else ""
+        logger.debug(
+            f"[情感层] 指令注入: 情绪={emotion}(eff_conf={effective_conf:.2f}) "
+            f"{'「' + directive + '」' if directive else '(跳过，置信度不足)'}"
+        )
+        return directive
 
-    def _adaptive_max_tokens(self, emotion_analysis: Optional[Dict],
-                             client: Optional["LLMClient"] = None) -> int:
+    def _adaptive_max_tokens(
+        self,
+        emotion_analysis: Optional[Dict],
+        client: Optional["LLMClient"] = None
+    ) -> int:
         """
-        根据 BERT 情绪分析动态调整 max_tokens。
+        根据情绪动态调整 max_tokens。
 
-        actual_max_tokens = config.max_tokens × emotion_weight [× intensity_boost]
+        策略：
+        - config.max_tokens 是理论上限（400000），权重控制实际使用量
+        - 日常对话：0.0125-0.03 → 5K-12K tokens（保证对话质量和自然展开）
+        - 详细回答（curiosity）：0.0375 → 15K tokens
+        - 高强度情绪：+50% 加成
+        - 最终不超过 config.max_tokens（在极端情况下 LLM 可自主决定是否用满）
         """
         c = client or self.llm_client
-        base = c.config.max_tokens
+        ceiling = c.config.max_tokens
 
         if emotion_analysis is None:
-            return base
+            return int(ceiling * 0.02)  # 默认 8K tokens
 
         emotion = emotion_analysis["emotion"]["primary"]
         intensity = emotion_analysis["emotion"]["intensity"]
 
-        weight = _EMOTION_TOKEN_WEIGHTS.get(emotion, 1.0)
+        weight = _EMOTION_TOKEN_WEIGHTS.get(emotion, 0.02)
 
-        # 高强度情绪适当增加回复空间
+        # 高强度情绪加成
         if intensity >= 0.7:
-            weight += 0.15
+            weight *= 1.5
 
-        result = max(100, int(base * weight))
+        result = int(ceiling * weight)
+        result = min(result, ceiling)  # 不超过配置上限
+        result = max(result, 100)      # 最低 100 tokens
+
         logger.debug(
-            f"adaptive max_tokens: base={base} × {weight:.2f} "
+            f"adaptive max_tokens: ceiling={ceiling} × {weight:.5f} "
             f"(emotion={emotion} intensity={intensity:.2f}) = {result}"
         )
         return result
@@ -676,14 +919,71 @@ class NeuroLikePipeline:
             client: 指定 LLM 客户端（路由选择的结果）
         """
         c = client or self.llm_client
-        system_prompt = self.build_system_prompt(recalled_context, emotion_analysis)
         max_tokens = self._adaptive_max_tokens(emotion_analysis, c)
-        return c.generate(
-            system_prompt=system_prompt,
-            user_input=user_input,
-            history=history,
-            max_tokens=max_tokens,
-        )
+
+        # 情感分析全量日志（供研究/调参，结构化数据不进 prompt）
+        if emotion_analysis:
+            em = emotion_analysis["emotion"]
+            bh = emotion_analysis["behavior"]
+            parts = [
+                f"情绪={em['primary']}(prob={em.get('primary_prob', 0):.2f})",
+                f"强度={em['intensity']:.2f}",
+                f"行为={bh['type']} 语气={bh['tone']}",
+            ]
+            fusion_meta = em.get("_fusion_meta")
+            if fusion_meta:
+                parts.append(
+                    f"融合[bert={fusion_meta.get('bert_label')} "
+                    f"llm={fusion_meta.get('llm_label')} "
+                    f"一致={fusion_meta.get('agreement')}]"
+                )
+            logger.debug(f"[情感层] {' | '.join(parts)}")
+
+        # 情绪状态机参数调节
+        temperature = None
+        top_p = None
+        if self.emotion_state_tracker:
+            adj = self.emotion_state_tracker.get_param_adjustments(
+                base_temp=c.config.temperature,
+                base_tokens=max_tokens,
+                base_top_p=c.config.top_p,
+            )
+            temperature = adj["temperature"]
+            max_tokens = adj["max_tokens"]
+            top_p = adj["top_p"]
+
+            st = self.emotion_state_tracker.state
+            hint = self.emotion_state_tracker.get_prompt_hint()
+            logger.debug(
+                f"[情绪状态机] v={st.valence:.2f} a={st.arousal:.2f} "
+                f"→ label={st.last_emotion} | "
+                f"Δtemp={temperature - c.config.temperature:+.2f} "
+                f"Δtop_p={top_p - c.config.top_p:+.2f} | "
+                f"注入暗示: {hint or '(无)'}"
+            )
+
+        # Anthropic 使用多块 system prompt 优化缓存
+        if c.provider == LLMProvider.ANTHROPIC:
+            system_blocks = self.build_system_prompt_blocks(recalled_context, emotion_analysis)
+            return c.generate(
+                system_blocks=system_blocks,
+                user_input=user_input,
+                history=history,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+            )
+        else:
+            # 其他 provider 使用单块 system prompt
+            system_prompt = self.build_system_prompt(recalled_context, emotion_analysis)
+            return c.generate(
+                system_prompt=system_prompt,
+                user_input=user_input,
+                history=history,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+            )
 
     def should_respond(self, emotion_behavior: Dict, is_mentioned: bool = False) -> bool:
         """
@@ -712,7 +1012,8 @@ class NeuroLikePipeline:
 
     def chat(self, user_input: str, verbose: bool = False,
              is_mentioned: bool = True,
-             chat_mode: ChatMode = ChatMode.PRIVATE) -> Dict:
+             chat_mode: ChatMode = ChatMode.PRIVATE,
+             use_fusion: bool = None) -> Dict:
         """
         完整对话流程
 
@@ -721,6 +1022,7 @@ class NeuroLikePipeline:
             verbose: 是否输出详细信息
             is_mentioned: 是否被 @ 提及（群聊场景传入）
             chat_mode: 对话模式（PRIVATE=私聊纯 Claude，GROUP=群聊 BERT 路由）
+            use_fusion: 是否启用情绪融合（None=使用配置默认值，True/False=强制覆盖）
 
         Returns:
             {
@@ -731,8 +1033,33 @@ class NeuroLikePipeline:
                 "debug_info": {...}
             }
         """
-        # ── 旁路：BERT 分析 ──────────────────────────────────────────────
-        emotion_behavior = self.analyze_emotion_behavior(user_input)
+        # 决定是否启用融合：优先使用显式参数，否则使用配置默认值
+        if use_fusion is None:
+            use_fusion = (
+                self.emotion_fusion_config is not None
+                and self.emotion_fusion_config.enabled
+                and self.emotion_fusion_config.use_by_default
+            )
+
+        # ── 旁路：BERT+LLM 情绪分析 与 记忆召回 并行执行 ───────────────────
+        # 两者互不依赖，可同时进行以节省约 1-2s（情绪融合 LLM 调用耗时）
+        if isinstance(self.memory, HierarchicalMemoryManager):
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=2) as _pool:
+                _f_emotion = _pool.submit(
+                    self._analyze_emotion_with_fusion, user_input, use_fusion
+                )
+                _f_recalled = _pool.submit(
+                    self.memory.get_system_context, user_input
+                )
+                emotion_behavior = _f_emotion.result()
+                recalled = _f_recalled.result()
+            history = self.memory.get_messages_history()
+            logger.debug(f"记忆 {self.memory.l1_usage} L1轮次={len(self.memory.working_memory)}")
+        else:
+            emotion_behavior = self._analyze_emotion_with_fusion(user_input, use_fusion=use_fusion)
+            recalled = self.memory.format_context(num_turns=5)
+            history = None
 
         if emotion_behavior is not None:
             intensity = emotion_behavior["emotion"]["intensity"]
@@ -760,17 +1087,6 @@ class NeuroLikePipeline:
         if not respond:
             logger.debug("注意力判断：跳过回复，仅记录记忆")
 
-        # ── 记忆上下文 ────────────────────────────────────────────────────
-        if isinstance(self.memory, HierarchicalMemoryManager):
-            # L2/L3/L4 召回 → system prompt
-            recalled = self.memory.get_system_context(query=user_input)
-            # L1 原文 → messages 数组
-            history = self.memory.get_messages_history()
-            logger.debug(f"记忆 {self.memory.l1_usage} L1轮次={len(self.memory.working_memory)}")
-        else:
-            recalled = self.memory.format_context(num_turns=5)
-            history = None
-
         # ── LLM 路由 + 生成 ──────────────────────────────────────────────
         response = None
         routed_client = self._route_llm_client(
@@ -783,6 +1099,33 @@ class NeuroLikePipeline:
                 client=routed_client,
             )
 
+        # ── 情绪状态机更新 ──────────────────────────────────────────────
+        if self.emotion_state_tracker and response:
+            # BERT 分析 AI 自身输出
+            ai_emotion = emotion_primary
+            ai_intensity = intensity
+            if self.small_model:
+                ai_result = self._analyze_emotion_with_fusion(
+                    response, use_fusion=False
+                )
+                if ai_result:
+                    ai_emotion = ai_result["emotion"]["primary"]
+                    ai_intensity = ai_result["emotion"]["intensity"]
+
+            self.emotion_state_tracker.update(
+                user_emotion=emotion_primary,
+                user_intensity=intensity,
+                ai_emotion=ai_emotion,
+                ai_intensity=ai_intensity,
+            )
+
+            # 每 N 轮持久化一次（后台线程，不阻塞响应）
+            tc = self.emotion_state_tracker.state.turn_count
+            interval = self.emotion_state_tracker.config.save_interval_turns
+            if interval > 0 and tc % interval == 0:
+                from concurrent.futures import ThreadPoolExecutor
+                ThreadPoolExecutor(max_workers=1).submit(self._save_emotion_state)
+
         # ── 记忆写入（无论是否回复都记录，群聊静默观察也积累上下文）──────
         turn = ConversationTurn(
             user_input=user_input,
@@ -791,6 +1134,7 @@ class NeuroLikePipeline:
             behavior=behavior_type,
             tone=tone,
             response=response or "",
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
         self.memory.add(turn)
 
@@ -806,6 +1150,78 @@ class NeuroLikePipeline:
             },
         }
 
+    def generate_proactive(
+        self,
+        trigger: str,
+        chat_mode: ChatMode = ChatMode.PRIVATE,
+        decision_hint: Optional['ProactiveDecision'] = None
+    ) -> Optional[str]:
+        """
+        主动发言生成。没有用户输入，由 Agent 事件循环触发。
+
+        Args:
+            trigger: 触发原因描述（如 "对话已空闲5分钟"）
+            chat_mode: 对话模式
+            decision_hint: 主动决策模块的指导（可选）
+        Returns:
+            生成的主动发言文本，或 None（若决定不说话）
+        """
+        # 记忆上下文
+        if isinstance(self.memory, HierarchicalMemoryManager):
+            recalled = self.memory.get_system_context(query=trigger)
+            history = self.memory.get_messages_history()
+        else:
+            recalled = self.memory.format_context(num_turns=5)
+            history = None
+
+        # 构建 system prompt，注入触发原因
+        system_prompt = self.build_system_prompt(recalled)
+        system_prompt += (
+            f"\n<proactive_trigger>{trigger}</proactive_trigger>"
+            "\n你可以主动找话题聊，或者接上之前的对话继续说。"
+            "如果实在没什么好说的，回复空字符串即可。"
+        )
+
+        # 注入决策指导
+        if decision_hint:
+            hint_text = (
+                f"\n[主动发言指导]\n"
+                f"意图: {decision_hint.intent}\n"
+                f"话题提示: {decision_hint.topic_hint}\n"
+                f"建议语气: {decision_hint.tone}"
+            )
+            system_prompt += hint_text
+
+        # 主动发言用主 LLM 保质量
+        max_tokens = self.llm_client.config.max_tokens
+        try:
+            response = self.llm_client.generate(
+                system_prompt=system_prompt,
+                user_input="...",
+                history=history,
+                max_tokens=max_tokens,
+            )
+        except Exception as e:
+            logger.error(f"主动发言生成失败: {e}")
+            return None
+
+        if not response or not response.strip():
+            return None
+
+        # 写入记忆
+        turn = ConversationTurn(
+            user_input="",
+            emotion="neutral",
+            intensity=0.0,
+            behavior="respond_positive",
+            tone="calm",
+            response=response,
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        self.memory.add(turn)
+
+        return response
+
     def save_conversation(self, output_path: str):
         """保存对话历史"""
         if isinstance(self.memory, HierarchicalMemoryManager):
@@ -818,7 +1234,12 @@ class NeuroLikePipeline:
         logger.info(f"对话历史已保存: {output_path}")
 
     def close(self):
-        """会话结束：写入长期记忆 + 关闭 Qdrant 连接"""
+        """会话结束：写入长期记忆 + 保存情绪状态 + 关闭 Qdrant 连接"""
+        # 情绪状态持久化（在记忆系统关闭前写入）
+        if (self.emotion_state_tracker
+                and self.emotion_state_tracker.config.persist_to_l4):
+            self._save_emotion_state()
+
         if isinstance(self.memory, HierarchicalMemoryManager):
             logger.info("正在写入长期记忆...")
             self.memory.close_session()
@@ -834,6 +1255,56 @@ class NeuroLikePipeline:
                             vs.client.close()
                         except Exception:
                             pass
+
+    # ── 情绪状态持久化 ────────────────────────────────────────────────
+
+    def _load_emotion_state(self) -> Optional[EmotionState]:
+        """从本地 JSON 文件恢复情绪状态（无 LLM 调用）"""
+        path = self._emotion_state_path()
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            state = EmotionState(
+                valence=data.get("valence", 0.0),
+                arousal=data.get("arousal", 0.1),
+                turn_count=data.get("turn_count", 0),
+                last_emotion=data.get("last_emotion", "neutral"),
+            )
+            logger.info(
+                f"从文件恢复情绪状态: v={state.valence:.2f} "
+                f"a={state.arousal:.2f} label={state.last_emotion}"
+            )
+            return state
+        except Exception as e:
+            logger.warning(f"加载情绪状态失败（使用默认值）: {e}")
+            return None
+
+    def _save_emotion_state(self):
+        """将情绪状态写入本地 JSON 文件（快速，无 LLM 调用）"""
+        if not self.emotion_state_tracker:
+            return
+        try:
+            path = self._emotion_state_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            data = self.emotion_state_tracker.to_dict()
+            path.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            logger.debug(
+                f"情绪状态已保存: v={data['valence']:.2f} a={data['arousal']:.2f}"
+            )
+        except Exception as e:
+            logger.warning(f"保存情绪状态失败: {e}")
+
+    def _emotion_state_path(self) -> "Path":
+        from pathlib import Path
+        if isinstance(self.memory, HierarchicalMemoryManager):
+            base = Path(self.memory.config.vector_store_path).parent
+        else:
+            base = Path(".")
+        return base / "emotion_state.json"
 
 
 def interactive_chat(pipeline: NeuroLikePipeline):

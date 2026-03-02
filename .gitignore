@@ -45,3 +45,5 @@ neuro_like_system/data/
 data_set/
 #test
 test/
+# Logs
+neuro_like_system/logs/

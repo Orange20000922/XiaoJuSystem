@@ -259,3 +259,324 @@ Check the documentation of torch.load to learn more about types accepted by defa
 2026-02-27 02:51:46.181 | DEBUG    | __main__:generate:195 - LLM 响应成功 长度=224 chars
 2026-02-27 02:56:43.627 | INFO     | __main__:close:703 - 正在写入长期记忆...
 2026-02-27 02:57:02.005 | INFO     | __main__:close:705 - 长期记忆已保存。
+2026-02-27 04:03:32.237 | INFO     | __main__:main:453 - 配置加载成功: provider=anthropic model=claude-sonnet-4-6
+2026-02-27 04:03:32.241 | INFO     | src.inference_pipeline:__init__:417 - 加载小模型...
+2026-02-27 04:03:33.591 | INFO     | src.inference_pipeline:_load_checkpoint:491 - 加载检查点: ./checkpoints/joint_model/best.pt
+2026-02-27 04:03:33.591 | INFO     | src.inference_pipeline:_load_checkpoint:495 -   验证损失: 0.9380
+2026-02-27 04:03:33.591 | INFO     | src.inference_pipeline:_load_checkpoint:497 -   情绪准确率: 68.23%
+2026-02-27 04:03:33.651 | INFO     | src.inference_pipeline:__init__:422 - 小模型加载成功
+2026-02-27 04:03:33.653 | INFO     | src.inference_pipeline:__init__:430 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 04:03:36.055 | INFO     | src.inference_pipeline:__init__:448 - 初始化副 LLM 客户端 (deepseek: deepseek-chat)
+2026-02-27 04:03:38.668 | INFO     | src.agent_loop:start:79 - Agent 循环已启动 proactive_level=off tick=2s
+2026-02-27 04:03:38.670 | INFO     | src.agent_loop:stop:89 - 正在停止 Agent 循环...
+2026-02-27 04:03:38.767 | DEBUG    | src.inference_pipeline:chat:751 - BERT 情绪=neutral 强度=0.44 行为=disagree
+2026-02-27 04:03:38.971 | DEBUG    | src.inference_pipeline:chat:778 - 记忆 0/400000 tokens (0.0%) | 保护区 0/12 轮 | trigger=300000 L1轮次=0
+2026-02-27 04:03:38.971 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:618 - adaptive max_tokens: base=10000 × 0.60 (emotion=neutral intensity=0.44) = 6000
+2026-02-27 04:03:38.972 | DEBUG    | src.inference_pipeline:generate:183 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=6000
+2026-02-27 04:03:45.672 | INFO     | src.inference_pipeline:close:889 - 正在写入长期记忆...
+2026-02-27 04:03:45.696 | INFO     | src.inference_pipeline:close:891 - 长期记忆已保存。
+2026-02-27 04:03:45.697 | INFO     | src.agent_loop:stop:95 - Agent 循环已停止
+2026-02-27 04:03:46.724 | DEBUG    | src.inference_pipeline:generate:203 - LLM 响应成功 长度=41 chars
+2026-02-27 04:05:05.471 | INFO     | __main__:main:453 - 配置加载成功: provider=anthropic model=claude-sonnet-4-6
+2026-02-27 04:05:05.474 | INFO     | src.inference_pipeline:__init__:417 - 加载小模型...
+2026-02-27 04:05:06.634 | INFO     | src.inference_pipeline:_load_checkpoint:491 - 加载检查点: ./checkpoints/joint_model/best.pt
+2026-02-27 04:05:06.634 | INFO     | src.inference_pipeline:_load_checkpoint:495 -   验证损失: 0.9380
+2026-02-27 04:05:06.634 | INFO     | src.inference_pipeline:_load_checkpoint:497 -   情绪准确率: 68.23%
+2026-02-27 04:05:06.711 | INFO     | src.inference_pipeline:__init__:422 - 小模型加载成功
+2026-02-27 04:05:06.711 | INFO     | src.inference_pipeline:__init__:430 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 04:05:08.812 | INFO     | src.inference_pipeline:__init__:448 - 初始化副 LLM 客户端 (deepseek: deepseek-chat)
+2026-02-27 04:05:11.712 | INFO     | src.agent_loop:start:79 - Agent 循环已启动 proactive_level=off tick=2s
+2026-02-27 04:05:11.712 | INFO     | src.agent_loop:stop:89 - 正在停止 Agent 循环...
+2026-02-27 04:05:11.781 | DEBUG    | src.inference_pipeline:chat:751 - BERT 情绪=neutral 强度=0.44 行为=disagree
+2026-02-27 04:05:11.904 | DEBUG    | src.inference_pipeline:chat:778 - 记忆 0/400000 tokens (0.0%) | 保护区 0/12 轮 | trigger=300000 L1轮次=0
+2026-02-27 04:05:11.904 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:618 - adaptive max_tokens: base=10000 × 0.60 (emotion=neutral intensity=0.44) = 6000
+2026-02-27 04:05:11.904 | DEBUG    | src.inference_pipeline:generate:183 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=6000
+2026-02-27 04:05:18.715 | INFO     | src.inference_pipeline:close:889 - 正在写入长期记忆...
+2026-02-27 04:05:18.742 | INFO     | src.inference_pipeline:close:891 - 长期记忆已保存。
+2026-02-27 04:05:18.743 | INFO     | src.agent_loop:stop:95 - Agent 循环已停止
+2026-02-27 04:05:19.986 | DEBUG    | src.inference_pipeline:generate:203 - LLM 响应成功 长度=72 chars
+2026-02-27 04:05:48.703 | INFO     | src.inference_pipeline:__init__:417 - 加载小模型...
+2026-02-27 04:05:49.682 | INFO     | src.inference_pipeline:_load_checkpoint:491 - 加载检查点: ./checkpoints/joint_model/best.pt
+2026-02-27 04:05:49.683 | INFO     | src.inference_pipeline:_load_checkpoint:495 -   验证损失: 0.9380
+2026-02-27 04:05:49.683 | INFO     | src.inference_pipeline:_load_checkpoint:497 -   情绪准确率: 68.23%
+2026-02-27 04:05:49.734 | INFO     | src.inference_pipeline:__init__:422 - 小模型加载成功
+2026-02-27 04:05:49.734 | INFO     | src.inference_pipeline:__init__:430 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 04:05:51.897 | INFO     | src.inference_pipeline:__init__:448 - 初始化副 LLM 客户端 (deepseek: deepseek-chat)
+2026-02-27 04:05:56.393 | INFO     | src.agent_loop:start:79 - Agent 循环已启动 proactive_level=off tick=2s
+2026-02-27 04:05:56.456 | DEBUG    | src.inference_pipeline:chat:751 - BERT 情绪=neutral 强度=0.34 行为=share_experience
+2026-02-27 04:05:56.582 | DEBUG    | src.inference_pipeline:chat:778 - 记忆 0/400000 tokens (0.0%) | 保护区 0/12 轮 | trigger=300000 L1轮次=0
+2026-02-27 04:05:56.583 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:618 - adaptive max_tokens: base=10000 × 0.60 (emotion=neutral intensity=0.34) = 6000
+2026-02-27 04:05:56.583 | DEBUG    | src.inference_pipeline:generate:183 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=6000
+2026-02-27 04:06:04.762 | DEBUG    | src.inference_pipeline:generate:203 - LLM 响应成功 长度=70 chars
+2026-02-27 04:06:11.394 | INFO     | src.agent_loop:stop:89 - 正在停止 Agent 循环...
+2026-02-27 04:06:12.953 | INFO     | src.inference_pipeline:close:889 - 正在写入长期记忆...
+2026-02-27 04:06:25.562 | INFO     | src.inference_pipeline:close:891 - 长期记忆已保存。
+2026-02-27 04:06:25.563 | INFO     | src.agent_loop:stop:95 - Agent 循环已停止
+2026-02-27 04:07:23.673 | INFO     | src.inference_pipeline:__init__:417 - 加载小模型...
+2026-02-27 04:07:24.606 | INFO     | src.inference_pipeline:_load_checkpoint:491 - 加载检查点: ./checkpoints/joint_model/best.pt
+2026-02-27 04:07:24.606 | INFO     | src.inference_pipeline:_load_checkpoint:495 -   验证损失: 0.9380
+2026-02-27 04:07:24.606 | INFO     | src.inference_pipeline:_load_checkpoint:497 -   情绪准确率: 68.23%
+2026-02-27 04:07:24.668 | INFO     | src.inference_pipeline:__init__:422 - 小模型加载成功
+2026-02-27 04:07:24.668 | INFO     | src.inference_pipeline:__init__:430 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 04:07:26.854 | INFO     | src.inference_pipeline:__init__:448 - 初始化副 LLM 客户端 (deepseek: deepseek-chat)
+2026-02-27 04:07:29.064 | INFO     | src.agent_loop:start:79 - Agent 循环已启动 proactive_level=medium tick=2s
+2026-02-27 04:07:29.127 | DEBUG    | src.inference_pipeline:chat:751 - BERT 情绪=joy 强度=0.64 行为=share_experience
+2026-02-27 04:07:29.274 | DEBUG    | src.inference_pipeline:chat:778 - 记忆 0/400000 tokens (0.0%) | 保护区 0/12 轮 | trigger=300000 L1轮次=0
+2026-02-27 04:07:29.274 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:618 - adaptive max_tokens: base=10000 × 0.80 (emotion=joy intensity=0.64) = 8000
+2026-02-27 04:07:29.275 | DEBUG    | src.inference_pipeline:generate:183 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=8000
+2026-02-27 04:07:37.417 | DEBUG    | src.inference_pipeline:generate:203 - LLM 响应成功 长度=23 chars
+2026-02-27 04:07:45.605 | INFO     | src.agent_loop:_check_idle_trigger:190 - 空闲触发主动发言: 对话已空闲16秒
+2026-02-27 04:07:45.719 | DEBUG    | src.inference_pipeline:generate:183 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=10000
+2026-02-27 04:07:52.373 | DEBUG    | src.inference_pipeline:generate:203 - LLM 响应成功 长度=89 chars
+2026-02-27 04:07:56.380 | INFO     | src.agent_loop:_check_idle_trigger:190 - 空闲触发主动发言: 对话已空闲27秒
+2026-02-27 04:07:56.486 | DEBUG    | src.inference_pipeline:generate:183 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=10000
+2026-02-27 04:08:01.787 | DEBUG    | src.inference_pipeline:generate:203 - LLM 响应成功 长度=122 chars
+2026-02-27 04:08:07.789 | INFO     | src.agent_loop:_check_idle_trigger:190 - 空闲触发主动发言: 对话已空闲38秒
+2026-02-27 04:08:07.902 | DEBUG    | src.inference_pipeline:generate:183 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=10000
+2026-02-27 04:08:09.065 | INFO     | src.agent_loop:stop:89 - 正在停止 Agent 循环...
+2026-02-27 04:08:16.077 | INFO     | src.inference_pipeline:close:889 - 正在写入长期记忆...
+2026-02-27 04:08:16.449 | DEBUG    | src.inference_pipeline:generate:203 - LLM 响应成功 长度=135 chars
+2026-02-27 04:08:20.604 | INFO     | src.inference_pipeline:close:891 - 长期记忆已保存。
+2026-02-27 04:08:20.604 | INFO     | src.agent_loop:stop:95 - Agent 循环已停止
+2026-02-27 21:38:10.774 | INFO     | __main__:main:502 - 配置加载成功: provider=anthropic model=claude-sonnet-4-6
+2026-02-27 21:38:10.775 | INFO     | src.inference_pipeline:__init__:421 - 加载小模型...
+2026-02-27 21:38:12.170 | INFO     | src.inference_pipeline:_load_checkpoint:513 - 加载检查点: ./checkpoints/joint_model/best.pt
+2026-02-27 21:38:12.171 | INFO     | src.inference_pipeline:_load_checkpoint:517 -   验证损失: 0.9380
+2026-02-27 21:38:12.171 | INFO     | src.inference_pipeline:_load_checkpoint:519 -   情绪准确率: 68.23%
+2026-02-27 21:38:12.222 | INFO     | src.inference_pipeline:__init__:426 - 小模型加载成功
+2026-02-27 21:38:12.222 | INFO     | src.inference_pipeline:__init__:434 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 21:38:14.666 | INFO     | src.inference_pipeline:__init__:452 - 初始化副 LLM 客户端 (deepseek: deepseek-chat)
+2026-02-27 21:38:15.681 | INFO     | src.inference_pipeline:__init__:472 - 情绪融合系统已启用
+2026-02-27 21:38:15.683 | INFO     | __main__:run_fusion_test:444 - ============================================================
+2026-02-27 21:38:15.683 | INFO     | __main__:run_fusion_test:445 - 情绪融合对比测试：BERT-only vs 融合模式
+2026-02-27 21:38:15.683 | INFO     | __main__:run_fusion_test:446 - ============================================================
+2026-02-27 21:38:15.796 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=joy 强度=0.82 行为=disagree
+2026-02-27 21:38:15.796 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.95 (emotion=joy intensity=0.82) = 9500
+2026-02-27 21:38:15.796 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=9500
+2026-02-27 21:38:19.906 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=17 chars
+2026-02-27 21:38:22.044 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: joy (BERT: joy, LLM: joy, agree: True)
+2026-02-27 21:38:22.045 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=joy 强度=0.82 行为=disagree
+2026-02-27 21:38:22.045 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.95 (emotion=joy intensity=0.82) = 9500
+2026-02-27 21:38:22.045 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=9500
+2026-02-27 21:38:24.930 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=17 chars
+2026-02-27 21:38:24.983 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=sadness 强度=0.65 行为=disagree
+2026-02-27 21:38:24.984 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.20 (emotion=sadness intensity=0.65) = 12000
+2026-02-27 21:38:24.984 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=12000
+2026-02-27 21:38:30.531 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=25 chars
+2026-02-27 21:38:32.503 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: sadness (BERT: sadness, LLM: sadness, agree: True)
+2026-02-27 21:38:32.503 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=sadness 强度=0.65 行为=disagree
+2026-02-27 21:38:32.504 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.20 (emotion=sadness intensity=0.65) = 12000
+2026-02-27 21:38:32.504 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=12000
+2026-02-27 21:38:36.327 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=25 chars
+2026-02-27 21:38:36.329 | INFO     | __main__:run_fusion_test:473 - 融合测试完成
+2026-02-27 21:43:19.980 | INFO     | __main__:main:502 - 配置加载成功: provider=anthropic model=claude-sonnet-4-6
+2026-02-27 21:43:19.981 | INFO     | src.inference_pipeline:__init__:421 - 加载小模型...
+2026-02-27 21:43:20.922 | INFO     | src.inference_pipeline:_load_checkpoint:513 - 加载检查点: ./checkpoints/joint_model/best.pt
+2026-02-27 21:43:20.922 | INFO     | src.inference_pipeline:_load_checkpoint:517 -   验证损失: 0.9380
+2026-02-27 21:43:20.922 | INFO     | src.inference_pipeline:_load_checkpoint:519 -   情绪准确率: 68.23%
+2026-02-27 21:43:20.981 | INFO     | src.inference_pipeline:__init__:426 - 小模型加载成功
+2026-02-27 21:43:20.982 | INFO     | src.inference_pipeline:__init__:434 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 21:43:23.154 | INFO     | src.inference_pipeline:__init__:452 - 初始化副 LLM 客户端 (deepseek: deepseek-chat)
+2026-02-27 21:43:23.886 | INFO     | src.inference_pipeline:__init__:472 - 情绪融合系统已启用
+2026-02-27 21:43:23.887 | INFO     | __main__:run_fusion_test:444 - ============================================================
+2026-02-27 21:43:23.887 | INFO     | __main__:run_fusion_test:445 - 情绪融合对比测试：BERT-only vs 融合模式
+2026-02-27 21:43:23.887 | INFO     | __main__:run_fusion_test:446 - ============================================================
+2026-02-27 21:43:23.946 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=joy 强度=0.82 行为=disagree
+2026-02-27 21:43:23.946 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.95 (emotion=joy intensity=0.82) = 9500
+2026-02-27 21:43:23.946 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=9500
+2026-02-27 21:43:31.629 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=17 chars
+2026-02-27 21:43:34.266 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: joy (BERT: joy, LLM: joy, agree: True)
+2026-02-27 21:43:34.267 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=joy 强度=0.82 行为=disagree
+2026-02-27 21:43:34.267 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.95 (emotion=joy intensity=0.82) = 9500
+2026-02-27 21:43:34.267 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=9500
+2026-02-27 21:43:38.506 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=17 chars
+2026-02-27 21:43:38.558 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=sadness 强度=0.65 行为=disagree
+2026-02-27 21:43:38.560 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.20 (emotion=sadness intensity=0.65) = 12000
+2026-02-27 21:43:38.560 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=12000
+2026-02-27 21:43:44.141 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=25 chars
+2026-02-27 21:43:46.164 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: sadness (BERT: sadness, LLM: sadness, agree: True)
+2026-02-27 21:43:46.164 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=sadness 强度=0.65 行为=disagree
+2026-02-27 21:43:46.164 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.20 (emotion=sadness intensity=0.65) = 12000
+2026-02-27 21:43:46.164 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=12000
+2026-02-27 21:43:50.735 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=25 chars
+2026-02-27 21:43:50.785 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=neutral 强度=0.40 行为=share_experience
+2026-02-27 21:43:50.785 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.60 (emotion=neutral intensity=0.40) = 6000
+2026-02-27 21:43:50.785 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=6000
+2026-02-27 21:43:54.949 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=23 chars
+2026-02-27 21:43:56.749 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: neutral (BERT: neutral, LLM: neutral, agree: True)
+2026-02-27 21:43:56.749 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=neutral 强度=0.40 行为=share_experience
+2026-02-27 21:43:56.749 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.60 (emotion=neutral intensity=0.40) = 6000
+2026-02-27 21:43:56.749 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=6000
+2026-02-27 21:44:00.280 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=23 chars
+2026-02-27 21:44:00.332 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=joy 强度=0.85 行为=share_experience
+2026-02-27 21:44:00.332 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.95 (emotion=joy intensity=0.85) = 9500
+2026-02-27 21:44:00.332 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=9500
+2026-02-27 21:44:04.690 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=17 chars
+2026-02-27 21:44:08.945 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: joy (BERT: joy, LLM: joy, agree: True)
+2026-02-27 21:44:08.945 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=joy 强度=0.85 行为=share_experience
+2026-02-27 21:44:08.946 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.95 (emotion=joy intensity=0.85) = 9500
+2026-02-27 21:44:08.946 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=9500
+2026-02-27 21:44:13.296 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=21 chars
+2026-02-27 21:44:13.347 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=anger 强度=0.71 行为=share_experience
+2026-02-27 21:44:13.347 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.15 (emotion=anger intensity=0.71) = 11500
+2026-02-27 21:44:13.349 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=11500
+2026-02-27 21:44:17.968 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=11 chars
+2026-02-27 21:44:22.092 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: anger (BERT: anger, LLM: anger, agree: True)
+2026-02-27 21:44:22.092 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=anger 强度=0.71 行为=share_experience
+2026-02-27 21:44:22.092 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.15 (emotion=anger intensity=0.71) = 11500
+2026-02-27 21:44:22.092 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=11500
+2026-02-27 21:44:25.138 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=11 chars
+2026-02-27 21:44:25.189 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=fear 强度=0.65 行为=share_experience
+2026-02-27 21:44:25.189 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.10 (emotion=fear intensity=0.65) = 11000
+2026-02-27 21:44:25.189 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=11000
+2026-02-27 21:44:28.756 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=12 chars
+2026-02-27 21:44:30.785 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: fear (BERT: fear, LLM: fear, agree: True)
+2026-02-27 21:44:30.785 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=fear 强度=0.65 行为=share_experience
+2026-02-27 21:44:30.785 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.10 (emotion=fear intensity=0.65) = 11000
+2026-02-27 21:44:30.785 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=11000
+2026-02-27 21:44:34.589 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=12 chars
+2026-02-27 21:44:34.645 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=curiosity 强度=0.56 行为=share_experience
+2026-02-27 21:44:34.645 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.40 (emotion=curiosity intensity=0.56) = 14000
+2026-02-27 21:44:34.645 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=14000
+2026-02-27 21:44:42.281 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=196 chars
+2026-02-27 21:44:44.644 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: curiosity (BERT: curiosity, LLM: curiosity, agree: True)
+2026-02-27 21:44:44.644 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=curiosity 强度=0.56 行为=share_experience
+2026-02-27 21:44:44.644 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.40 (emotion=curiosity intensity=0.56) = 14000
+2026-02-27 21:44:44.645 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=14000
+2026-02-27 21:44:52.380 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=261 chars
+2026-02-27 21:44:52.431 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=tenderness 强度=0.78 行为=disagree
+2026-02-27 21:44:52.431 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.15 (emotion=tenderness intensity=0.78) = 11500
+2026-02-27 21:44:52.431 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=11500
+2026-02-27 21:44:57.145 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=74 chars
+2026-02-27 21:44:58.933 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: tenderness (BERT: tenderness, LLM: tenderness, agree: True)
+2026-02-27 21:44:58.933 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=tenderness 强度=0.78 行为=disagree
+2026-02-27 21:44:58.933 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.15 (emotion=tenderness intensity=0.78) = 11500
+2026-02-27 21:44:58.933 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=11500
+2026-02-27 21:45:03.649 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=89 chars
+2026-02-27 21:45:03.649 | INFO     | __main__:run_fusion_test:473 - 融合测试完成
+2026-02-27 21:49:02.716 | INFO     | __main__:main:502 - 配置加载成功: provider=anthropic model=claude-sonnet-4-6
+2026-02-27 21:49:02.717 | INFO     | src.inference_pipeline:__init__:421 - 加载小模型...
+2026-02-27 21:49:04.037 | INFO     | src.inference_pipeline:_load_checkpoint:513 - 加载检查点: ./checkpoints/joint_model/best.pt
+2026-02-27 21:49:04.037 | INFO     | src.inference_pipeline:_load_checkpoint:517 -   验证损失: 0.9380
+2026-02-27 21:49:04.037 | INFO     | src.inference_pipeline:_load_checkpoint:519 -   情绪准确率: 68.23%
+2026-02-27 21:49:04.112 | INFO     | src.inference_pipeline:__init__:426 - 小模型加载成功
+2026-02-27 21:49:04.113 | INFO     | src.inference_pipeline:__init__:434 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 21:49:06.582 | INFO     | src.inference_pipeline:__init__:452 - 初始化副 LLM 客户端 (deepseek: deepseek-chat)
+2026-02-27 21:49:07.405 | INFO     | src.inference_pipeline:__init__:472 - 情绪融合系统已启用
+2026-02-27 21:49:07.405 | INFO     | __main__:run_fusion_test:444 - ============================================================
+2026-02-27 21:49:07.405 | INFO     | __main__:run_fusion_test:445 - 情绪融合对比测试：BERT-only vs 融合模式
+2026-02-27 21:49:07.405 | INFO     | __main__:run_fusion_test:446 - ============================================================
+2026-02-27 21:49:07.473 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=disgust 强度=0.61 行为=share_experience
+2026-02-27 21:49:07.473 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.80 (emotion=disgust intensity=0.61) = 8000
+2026-02-27 21:49:07.473 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=8000
+2026-02-27 21:50:35.531 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=24 chars
+2026-02-27 21:50:37.896 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: neutral (BERT: neutral, LLM: neutral, agree: True)
+2026-02-27 21:50:37.896 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=neutral 强度=0.61 行为=share_experience
+2026-02-27 21:50:37.896 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.60 (emotion=neutral intensity=0.61) = 6000
+2026-02-27 21:50:37.896 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=6000
+2026-02-27 21:50:43.847 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=36 chars
+2026-02-27 21:50:43.907 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=neutral 强度=0.42 行为=disagree
+2026-02-27 21:50:43.907 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.60 (emotion=neutral intensity=0.42) = 6000
+2026-02-27 21:50:43.907 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=6000
+2026-02-27 21:50:49.287 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=91 chars
+2026-02-27 21:50:51.675 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: neutral (BERT: neutral, LLM: neutral, agree: True)
+2026-02-27 21:50:51.675 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=neutral 强度=0.42 行为=disagree
+2026-02-27 21:50:51.675 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.60 (emotion=neutral intensity=0.42) = 6000
+2026-02-27 21:50:51.676 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=6000
+2026-02-27 21:50:58.566 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=115 chars
+2026-02-27 21:50:58.628 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=neutral 强度=0.37 行为=share_experience
+2026-02-27 21:50:58.628 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.60 (emotion=neutral intensity=0.37) = 6000
+2026-02-27 21:50:58.628 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=6000
+2026-02-27 21:51:04.799 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=126 chars
+2026-02-27 21:51:06.966 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: neutral (BERT: neutral, LLM: neutral, agree: True)
+2026-02-27 21:51:06.966 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=neutral 强度=0.37 行为=share_experience
+2026-02-27 21:51:06.966 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.60 (emotion=neutral intensity=0.37) = 6000
+2026-02-27 21:51:06.966 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=6000
+2026-02-27 21:51:12.375 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=98 chars
+2026-02-27 21:51:12.438 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=joy 强度=0.77 行为=disagree
+2026-02-27 21:51:12.438 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.95 (emotion=joy intensity=0.77) = 9500
+2026-02-27 21:51:12.438 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=9500
+2026-02-27 21:51:25.372 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=84 chars
+2026-02-27 21:51:30.062 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: excitement (BERT: excitement, LLM: excitement, agree: True)
+2026-02-27 21:51:30.062 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=excitement 强度=0.77 行为=disagree
+2026-02-27 21:51:30.062 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.05 (emotion=excitement intensity=0.77) = 10500
+2026-02-27 21:51:30.062 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=10500
+2026-02-27 21:51:36.206 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=146 chars
+2026-02-27 21:51:36.207 | INFO     | __main__:run_fusion_test:473 - 融合测试完成
+2026-02-27 21:51:59.432 | INFO     | __main__:main:502 - 配置加载成功: provider=anthropic model=claude-sonnet-4-6
+2026-02-27 21:51:59.433 | INFO     | src.inference_pipeline:__init__:421 - 加载小模型...
+2026-02-27 21:52:00.549 | INFO     | src.inference_pipeline:_load_checkpoint:513 - 加载检查点: ./checkpoints/joint_model/best.pt
+2026-02-27 21:52:00.550 | INFO     | src.inference_pipeline:_load_checkpoint:517 -   验证损失: 0.9380
+2026-02-27 21:52:00.550 | INFO     | src.inference_pipeline:_load_checkpoint:519 -   情绪准确率: 68.23%
+2026-02-27 21:52:00.631 | INFO     | src.inference_pipeline:__init__:426 - 小模型加载成功
+2026-02-27 21:52:00.633 | INFO     | src.inference_pipeline:__init__:434 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 21:52:03.215 | INFO     | src.inference_pipeline:__init__:452 - 初始化副 LLM 客户端 (deepseek: deepseek-chat)
+2026-02-27 21:52:04.438 | INFO     | src.inference_pipeline:__init__:472 - 情绪融合系统已启用
+2026-02-27 21:52:04.438 | INFO     | __main__:run_fusion_test:444 - ============================================================
+2026-02-27 21:52:04.438 | INFO     | __main__:run_fusion_test:445 - 情绪融合对比测试：BERT-only vs 融合模式
+2026-02-27 21:52:04.438 | INFO     | __main__:run_fusion_test:446 - ============================================================
+2026-02-27 21:52:04.503 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=tenderness 强度=0.66 行为=disagree
+2026-02-27 21:52:04.503 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.00 (emotion=tenderness intensity=0.66) = 10000
+2026-02-27 21:52:04.503 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=10000
+2026-02-27 21:52:10.807 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=73 chars
+2026-02-27 21:52:13.034 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: anger (BERT: anger, LLM: anger, agree: True)
+2026-02-27 21:52:13.034 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=anger 强度=0.66 行为=disagree
+2026-02-27 21:52:13.035 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.00 (emotion=anger intensity=0.66) = 10000
+2026-02-27 21:52:13.035 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=10000
+2026-02-27 21:52:18.575 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=73 chars
+2026-02-27 21:52:18.627 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=disgust 强度=0.73 行为=share_experience
+2026-02-27 21:52:18.627 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.95 (emotion=disgust intensity=0.73) = 9500
+2026-02-27 21:52:18.627 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=9500
+2026-02-27 21:52:25.792 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=127 chars
+2026-02-27 21:52:27.737 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: anger (BERT: anger, LLM: anger, agree: True)
+2026-02-27 21:52:27.737 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=anger 强度=0.73 行为=share_experience
+2026-02-27 21:52:27.737 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.15 (emotion=anger intensity=0.73) = 11500
+2026-02-27 21:52:27.737 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=11500
+2026-02-27 21:52:36.738 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=168 chars
+2026-02-27 21:52:36.793 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=surprise 强度=0.63 行为=share_experience
+2026-02-27 21:52:36.794 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.00 (emotion=surprise intensity=0.63) = 10000
+2026-02-27 21:52:36.794 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=10000
+2026-02-27 21:52:41.589 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=74 chars
+2026-02-27 21:52:43.417 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: surprise (BERT: surprise, LLM: neutral, agree: False)
+2026-02-27 21:52:43.417 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=surprise 强度=0.63 行为=share_experience
+2026-02-27 21:52:43.417 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 1.00 (emotion=surprise intensity=0.63) = 10000
+2026-02-27 21:52:43.417 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=10000
+2026-02-27 21:52:48.708 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=94 chars
+2026-02-27 21:52:48.764 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=joy 强度=0.82 行为=disagree
+2026-02-27 21:52:48.764 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.95 (emotion=joy intensity=0.82) = 9500
+2026-02-27 21:52:48.764 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=9500
+2026-02-27 21:52:52.868 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=52 chars
+2026-02-27 21:52:54.743 | DEBUG    | src.inference_pipeline:_analyze_emotion_with_fusion:581 - Fused: joy (BERT: joy, LLM: joy, agree: True)
+2026-02-27 21:52:54.743 | DEBUG    | src.inference_pipeline:chat:834 - BERT 情绪=joy 强度=0.82 行为=disagree
+2026-02-27 21:52:54.744 | DEBUG    | src.inference_pipeline:_adaptive_max_tokens:699 - adaptive max_tokens: base=10000 × 0.95 (emotion=joy intensity=0.82) = 9500
+2026-02-27 21:52:54.744 | DEBUG    | src.inference_pipeline:generate:185 - LLM 请求 attempt=1/3 model=claude-sonnet-4-6 max_tokens=9500
+2026-02-27 21:53:04.676 | DEBUG    | src.inference_pipeline:generate:205 - LLM 响应成功 长度=75 chars
+2026-02-27 21:53:04.676 | INFO     | __main__:run_fusion_test:473 - 融合测试完成
+2026-02-27 22:41:14.473 | INFO     | src.inference_pipeline:from_config:520 - 加载配置: AppConfig(
+  llm=anthropic:claude-sonnet-4-6,
+  personality=Neuro,
+  device=cpu,
+  context_window=400000
+)
+2026-02-27 22:41:14.474 | INFO     | src.inference_pipeline:__init__:445 - 加载小模型...
+2026-02-27 22:41:16.069 | INFO     | src.inference_pipeline:_load_checkpoint:537 - 加载检查点: ./checkpoints/joint_model/best.pt
+2026-02-27 22:41:16.070 | INFO     | src.inference_pipeline:_load_checkpoint:541 -   验证损失: 0.9380
+2026-02-27 22:41:16.070 | INFO     | src.inference_pipeline:_load_checkpoint:543 -   情绪准确率: 68.23%
+2026-02-27 22:41:16.158 | INFO     | src.inference_pipeline:__init__:450 - 小模型加载成功
+2026-02-27 22:41:16.158 | INFO     | src.inference_pipeline:__init__:458 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 22:41:18.780 | INFO     | src.inference_pipeline:__init__:476 - 初始化副 LLM 客户端 (deepseek: deepseek-chat)
+2026-02-27 22:41:19.604 | INFO     | src.inference_pipeline:__init__:496 - 情绪融合系统已启用
+2026-02-27 22:42:00.958 | INFO     | src.inference_pipeline:from_config:520 - 加载配置: AppConfig(
+  llm=anthropic:claude-sonnet-4-6,
+  personality=Neuro,
+  device=cpu,
+  context_window=400000
+)
+2026-02-27 22:42:00.959 | INFO     | src.inference_pipeline:__init__:445 - 加载小模型...
+2026-02-27 22:42:02.112 | INFO     | src.inference_pipeline:_load_checkpoint:537 - 加载检查点: ./checkpoints/joint_model/best.pt
+2026-02-27 22:42:02.113 | INFO     | src.inference_pipeline:_load_checkpoint:541 -   验证损失: 0.9380
+2026-02-27 22:42:02.113 | INFO     | src.inference_pipeline:_load_checkpoint:543 -   情绪准确率: 68.23%
+2026-02-27 22:42:02.174 | INFO     | src.inference_pipeline:__init__:450 - 小模型加载成功
+2026-02-27 22:42:02.174 | INFO     | src.inference_pipeline:__init__:458 - 初始化大模型客户端 (anthropic: claude-sonnet-4-6)
+2026-02-27 22:42:04.728 | INFO     | src.inference_pipeline:__init__:476 - 初始化副 LLM 客户端 (deepseek: deepseek-chat)
+2026-02-27 22:42:05.632 | INFO     | src.inference_pipeline:__init__:496 - 情绪融合系统已启用
