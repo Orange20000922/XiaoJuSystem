@@ -49,6 +49,7 @@ class AgentEvent:
     chat_mode: ChatMode = ChatMode.PRIVATE
     is_mentioned: bool = True
     timestamp: float = field(default_factory=time.time)
+    reply_context: dict = field(default_factory=dict)  # 适配层回复路由信息
 
 
 class AgentLoop:
@@ -78,6 +79,7 @@ class AgentLoop:
         self.proactive_state = ProactiveState.NORMAL
         self._stop_event = Event()
         self._thread: Optional[Thread] = None
+        self._current_reply_context: dict = {}  # 当前正在处理的事件的回复路由
 
         # 初始化主动决策模块
         if self.proactive_config.enabled:
@@ -159,6 +161,7 @@ class AgentLoop:
     def _handle_message(self, event: AgentEvent):
         """处理用户消息事件"""
         self.last_user_time = time.time()
+        self._current_reply_context = event.reply_context
 
         # 状态机转换：收到用户消息后重置为 NORMAL
         if self.proactive_state in (ProactiveState.WAITING_RESPONSE, ProactiveState.DORMANT):
@@ -320,7 +323,7 @@ class AgentLoop:
 
     def _load_emotion_state(self) -> Dict:
         """读取 data/emotion_state.json"""
-        path = Path("data/emotion_state.json")
+        path = project_root / "data" / "emotion_state.json"
         if path.exists():
             try:
                 return json.loads(path.read_text(encoding="utf-8"))

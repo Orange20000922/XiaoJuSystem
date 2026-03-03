@@ -546,3 +546,19 @@ class EmotionStateConfig:
 
 DEFAULT_EMOTION_STATE_CONFIG = EmotionStateConfig()
 
+
+# ============== QQ 机器人配置 ==============
+@dataclass
+class QQBotConfig:
+    """QQ 机器人适配层配置"""
+    ws_host: str = "0.0.0.0"         # WebSocket 监听地址
+    ws_port: int = 8080              # WebSocket 监听端口
+    ws_path: str = "/xm"             # WebSocket 路径（与 NapCat 配置一致）
+    bot_qq: int = 0                  # 机器人 QQ 号（用于检测 @）
+    owner_qq: int = 0                # 机器人主人 QQ 号（始终拥有管理权限）
+    owner_name: str = ""             # 主人在对话中的称呼（留空则用 QQ 昵称）
+    admin_qq: List[int] = field(default_factory=list)  # 其他管理员 QQ 号列表
+    command_prefix: str = "/"        # 命令前缀
+    reply_with_at: bool = True       # 群聊回复时是否 @ 对方
+    max_message_length: int = 500    # 单条消息最大长度，超过则分条发送
+

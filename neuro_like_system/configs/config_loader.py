@@ -21,6 +21,7 @@ from configs.model_config import (
     MemoryConfig,
     PersonalityConfig,
     ProactiveConfig,
+    QQBotConfig,
 )
 
 
@@ -254,6 +255,22 @@ def load_proactive_config(cfg: dict) -> ProactiveConfig:
     )
 
 
+def load_qq_bot_config(cfg: dict) -> QQBotConfig:
+    q = cfg.get("qq_bot", {})
+    return QQBotConfig(
+        ws_host=q.get("ws_host", "0.0.0.0"),
+        ws_port=q.get("ws_port", 8080),
+        ws_path=q.get("ws_path", "/xm"),
+        bot_qq=q.get("bot_qq", 0),
+        owner_qq=q.get("owner_qq", 0),
+        owner_name=q.get("owner_name", ""),
+        admin_qq=q.get("admin_qq", []),
+        command_prefix=q.get("command_prefix", "/"),
+        reply_with_at=q.get("reply_with_at", True),
+        max_message_length=q.get("max_message_length", 500),
+    )
+
+
 class AppConfig:
     """完整运行时配置，由 config.json 加载"""
 
@@ -273,6 +290,7 @@ class AppConfig:
         emotion_fusion: Optional[EmotionFusionConfig] = None,
         emotion_state_config: Optional[EmotionStateConfig] = None,
         proactive: Optional[ProactiveConfig] = None,
+        qq_bot: Optional[QQBotConfig] = None,
     ):
         self.llm = llm
         self.llm_secondary = llm_secondary
@@ -288,6 +306,7 @@ class AppConfig:
         self.emotion_fusion = emotion_fusion or EmotionFusionConfig()
         self.emotion_state_config = emotion_state_config
         self.proactive = proactive or ProactiveConfig()
+        self.qq_bot = qq_bot or QQBotConfig()
 
     @classmethod
     def load(cls, path: Optional[str] = None) -> "AppConfig":
@@ -331,6 +350,7 @@ class AppConfig:
             emotion_fusion=load_emotion_fusion_config(cfg),
             emotion_state_config=load_emotion_state_config(cfg),
             proactive=load_proactive_config(cfg),
+            qq_bot=load_qq_bot_config(cfg),
         )
 
     def __repr__(self) -> str:

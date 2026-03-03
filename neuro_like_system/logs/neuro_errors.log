@@ -635,3 +635,13 @@ Check the documentation of torch.load to learn more about types accepted by defa
 2026-03-02 23:30:21.815 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
 2026-03-02 23:30:23.848 | WARNING  | src.agent_loop:_get_l4_memories:342 - 搜索 L4 记忆失败: 'str' object has no attribute 'get'
 2026-03-02 23:31:42.888 | ERROR    | src.proactive_decision:decide:107 - 主动决策失败: Request timed out.
+2026-03-03 21:26:11.784 | CRITICAL | __main__:main:85 - 未捕获异常: [Errno 10048] error while attempting to bind on address ('0.0.0.0', 6099): 通常每个套接字地址(协议/网络地址/端口)只允许使用一次。
+2026-03-03 21:31:05.139 | WARNING  | src.qq_adapter:_check_path:118 - 收到未知路径连接: /，预期 /xm
+2026-03-03 21:31:08.703 | ERROR    | src.proactive_decision:decide:118 - 主动决策失败: Request timed out.
+2026-03-03 21:31:35.149 | WARNING  | src.qq_adapter:_check_path:118 - 收到未知路径连接: /，预期 /xm
+2026-03-03 21:32:05.157 | WARNING  | src.qq_adapter:_check_path:118 - 收到未知路径连接: /，预期 /xm
+2026-03-03 21:32:09.876 | ERROR    | src.proactive_decision:decide:118 - 主动决策失败: Request timed out.
+2026-03-03 21:34:37.285 | ERROR    | src.proactive_decision:decide:118 - 主动决策失败: Request timed out.
+2026-03-03 21:35:56.479 | ERROR    | src.proactive_decision:decide:118 - 主动决策失败: Request timed out.
+2026-03-03 21:38:02.192 | ERROR    | src.proactive_decision:decide:118 - 主动决策失败: Request timed out.
+2026-03-03 21:39:49.866 | WARNING  | src.qq_adapter:_cmd_exit:479 - 收到 /exit 命令 (来自 2140523341)，正在关闭

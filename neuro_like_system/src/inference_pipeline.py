@@ -1303,7 +1303,7 @@ class NeuroLikePipeline:
         if isinstance(self.memory, HierarchicalMemoryManager):
             base = Path(self.memory.config.vector_store_path).parent
         else:
-            base = Path(".")
+            base = project_root
         return base / "emotion_state.json"
 
 
