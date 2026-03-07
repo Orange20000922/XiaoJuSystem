@@ -13,15 +13,19 @@ from typing import Optional
 from configs.model_config import (
     AgentConfig,
     AnnotationAPIConfig,
+    AttentionConfig,
+    AudioConfig,
     EmotionFusionConfig,
     EmotionPromptConfig,
     EmotionStateConfig,
+    ImageConfig,
     LLMConfig,
     LLMProvider,
     MemoryConfig,
     PersonalityConfig,
     ProactiveConfig,
     QQBotConfig,
+    SenseVoiceConfig,
 )
 
 
@@ -79,6 +83,14 @@ def load_llm_config(cfg: dict) -> LLMConfig:
 def load_llm_secondary_config(cfg: dict) -> Optional[LLMConfig]:
     """加载副 LLM 配置（群聊廉价模型），不存在则返回 None"""
     section = cfg.get("llm_secondary")
+    if not section:
+        return None
+    return _load_llm_from_dict(section)
+
+
+def load_llm_vision_config(cfg: dict) -> Optional[LLMConfig]:
+    """加载图片专用 LLM 配置，不存在则返回 None"""
+    section = cfg.get("llm_vision")
     if not section:
         return None
     return _load_llm_from_dict(section)
@@ -198,6 +210,19 @@ def load_annotation_config(cfg: dict) -> AnnotationAPIConfig:
     )
 
 
+def load_attention_config(cfg: dict) -> AttentionConfig:
+    att = cfg.get("attention", {})
+    return AttentionConfig(
+        intensity_threshold=att.get("intensity_threshold", 0.7),
+        cooldown_seconds=att.get("cooldown_seconds", 60),
+        track_mentioned_users=att.get("track_mentioned_users", True),
+        mentioned_user_ttl=att.get("mentioned_user_ttl", 300),
+        context_window_messages=att.get("context_window_messages", 10),
+        non_focus_reply_interval=att.get("non_focus_reply_interval", 180),
+        non_focus_max_token_ratio=att.get("non_focus_max_token_ratio", 0.5),
+    )
+
+
 def load_agent_config(cfg: dict) -> AgentConfig:
     a = cfg.get("agent", {})
     return AgentConfig(
@@ -231,6 +256,9 @@ def load_emotion_state_config(cfg: dict) -> Optional[EmotionStateConfig]:
         alpha=es.get("alpha", 0.80),
         beta=es.get("beta", 0.25),
         gamma=es.get("gamma", 0.12),
+        delta=es.get("delta", 0.15),
+        baseline_valence=es.get("baseline_valence", 0.15),
+        baseline_arousal=es.get("baseline_arousal", 0.25),
         noise_sigma=es.get("noise_sigma", 0.05),
         injection_threshold=es.get("injection_threshold", 0.35),
         save_interval_turns=es.get("save_interval_turns", 5),
@@ -255,6 +283,19 @@ def load_proactive_config(cfg: dict) -> ProactiveConfig:
     )
 
 
+def load_image_config(cfg: dict) -> ImageConfig:
+    im = cfg.get("image", {})
+    return ImageConfig(
+        enabled=im.get("enabled", True),
+        cache_dir=im.get("cache_dir", "./data/image_cache"),
+        max_download_size_bytes=im.get("max_download_size_bytes", 10_485_760),
+        max_dimension=im.get("max_dimension", 1568),
+        max_images_per_message=im.get("max_images_per_message", 5),
+        cache_ttl_seconds=im.get("cache_ttl_seconds", 86400),
+        download_timeout=im.get("download_timeout", 15.0),
+    )
+
+
 def load_qq_bot_config(cfg: dict) -> QQBotConfig:
     q = cfg.get("qq_bot", {})
     return QQBotConfig(
@@ -271,6 +312,47 @@ def load_qq_bot_config(cfg: dict) -> QQBotConfig:
     )
 
 
+def load_audio_config(cfg: dict) -> AudioConfig:
+    a = cfg.get("audio", {})
+    if not a:
+        return AudioConfig(enabled=False)
+
+    # 解析 cosyvoice 子配置
+    cv = a.get("cosyvoice", {})
+
+    return AudioConfig(
+        enabled=a.get("enabled", True),
+        tts_provider=a.get("tts_provider", "cosyvoice"),
+        cosyvoice_repo_dir=cv.get("repo_dir", ""),
+        cosyvoice_model_dir=cv.get("model_dir", "./models/CosyVoice2-0.5B"),
+        ref_audio_dir=cv.get("ref_audio_dir", "./data/audio_refs"),
+        default_ref_audio=cv.get("default_ref_audio", "default.wav"),
+        default_ref_text=cv.get("default_ref_text", ""),
+        sample_rate=cv.get("sample_rate", 22050),
+        speed=cv.get("speed", 1.0),
+        emotion_ref_map=a.get("emotion_ref_map", {}),
+        cache_dir=a.get("cache_dir", "./data/audio_cache"),
+        cache_enabled=a.get("cache_enabled", True),
+        auto_play=a.get("auto_play", False),
+    )
+
+
+def load_sensevoice_config(cfg: dict) -> SenseVoiceConfig:
+    s = cfg.get("sensevoice", {})
+    if not s:
+        return SenseVoiceConfig(enabled=False)
+    return SenseVoiceConfig(
+        enabled=s.get("enabled", True),
+        model_id=s.get("model_id", "iic/SenseVoiceSmall"),
+        model_dir=s.get("model_dir"),
+        device=s.get("device", "cuda"),
+        language=s.get("language", "auto"),
+        use_emotion=s.get("use_emotion", True),
+        use_vad=s.get("use_vad", True),
+        batch_size=s.get("batch_size", 1),
+    )
+
+
 class AppConfig:
     """完整运行时配置，由 config.json 加载"""
 
@@ -283,30 +365,36 @@ class AppConfig:
         annotation: AnnotationAPIConfig,
         small_model_checkpoint: str,
         device: str,
-        attention_intensity_threshold: float,
-        attention_cooldown_seconds: int,
+        attention: AttentionConfig,
         llm_secondary: Optional[LLMConfig] = None,
+        llm_vision: Optional[LLMConfig] = None,
         agent: Optional[AgentConfig] = None,
         emotion_fusion: Optional[EmotionFusionConfig] = None,
         emotion_state_config: Optional[EmotionStateConfig] = None,
         proactive: Optional[ProactiveConfig] = None,
         qq_bot: Optional[QQBotConfig] = None,
+        image: Optional[ImageConfig] = None,
+        audio: Optional[AudioConfig] = None,
+        sensevoice: Optional[SenseVoiceConfig] = None,
     ):
         self.llm = llm
         self.llm_secondary = llm_secondary
+        self.llm_vision = llm_vision
         self.personality = personality
         self.memory = memory
         self.emotion_prompts = emotion_prompts
         self.annotation = annotation
         self.small_model_checkpoint = small_model_checkpoint
         self.device = device
-        self.attention_intensity_threshold = attention_intensity_threshold
-        self.attention_cooldown_seconds = attention_cooldown_seconds
+        self.attention = attention
         self.agent = agent or AgentConfig()
         self.emotion_fusion = emotion_fusion or EmotionFusionConfig()
         self.emotion_state_config = emotion_state_config
         self.proactive = proactive or ProactiveConfig()
         self.qq_bot = qq_bot or QQBotConfig()
+        self.image = image or ImageConfig()
+        self.audio = audio or AudioConfig(enabled=False)
+        self.sensevoice = sensevoice or SenseVoiceConfig(enabled=False)
 
     @classmethod
     def load(cls, path: Optional[str] = None) -> "AppConfig":
@@ -330,11 +418,11 @@ class AppConfig:
             cfg = json.load(f)
 
         sm = cfg.get("small_model", {})
-        att = cfg.get("attention", {})
 
         return cls(
             llm=load_llm_config(cfg),
             llm_secondary=load_llm_secondary_config(cfg),
+            llm_vision=load_llm_vision_config(cfg),
             personality=load_personality_config(cfg),
             memory=load_memory_config(cfg),
             emotion_prompts=load_emotion_prompt_config(cfg),
@@ -344,13 +432,15 @@ class AppConfig:
                 "./checkpoints/joint_model/best_model.pt"
             ),
             device=sm.get("device", "cpu"),
-            attention_intensity_threshold=att.get("intensity_threshold", 0.7),
-            attention_cooldown_seconds=att.get("cooldown_seconds", 60),
+            attention=load_attention_config(cfg),
             agent=load_agent_config(cfg),
             emotion_fusion=load_emotion_fusion_config(cfg),
             emotion_state_config=load_emotion_state_config(cfg),
             proactive=load_proactive_config(cfg),
             qq_bot=load_qq_bot_config(cfg),
+            image=load_image_config(cfg),
+            audio=load_audio_config(cfg),
+            sensevoice=load_sensevoice_config(cfg),
         )
 
     def __repr__(self) -> str:

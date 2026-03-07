@@ -645,3 +645,17 @@ Check the documentation of torch.load to learn more about types accepted by defa
 2026-03-03 21:35:56.479 | ERROR    | src.proactive_decision:decide:118 - 主动决策失败: Request timed out.
 2026-03-03 21:38:02.192 | ERROR    | src.proactive_decision:decide:118 - 主动决策失败: Request timed out.
 2026-03-03 21:39:49.866 | WARNING  | src.qq_adapter:_cmd_exit:479 - 收到 /exit 命令 (来自 2140523341)，正在关闭
+2026-03-05 01:34:20.746 | WARNING  | src.inference_pipeline:__init__:493 - 小模型加载失败，进入纯 LLM 模式: [Errno 2] No such file or directory: './checkpoints/joint_model/best.pt'
+2026-03-05 08:39:30.444 | WARNING  | src.image_utils:process_image_url:246 - 图片下载失败: https://multimedia.nt.qq.com.cn/download?appid=1406&amp;fileid=EhT-Q8eTZwizUhuBe — Client error '400 Bad Request' for url 'https://multimedia.nt.qq.com.cn/download?appid=1406&amp;fileid=EhT-Q8eTZwizUhuBeSmXfowuqekQAhjesRQg_goo-rez2sKHkwMyBHByb2RQgLsvWhBm0VG2-isu-wtUQq1BWAKYegIbQIIBAmd6&amp;rkey=CAMSMH70cytwHWBg6KiuMPOPXJxg9nGW3FEcw_tCgIfkdmBnP7tVne13lQOfzSTM5iVsow'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-03-05 08:39:30.462 | WARNING  | src.qq_adapter:_on_message:285 - 所有图片下载失败
+2026-03-05 08:39:56.282 | WARNING  | src.qq_adapter:_cmd_exit:578 - 收到 /exit 命令 (来自 2140523341)，正在关闭
+2026-03-05 09:20:11.088 | WARNING  | src.inference_pipeline:generate:252 - LLM 请求失败 attempt=1/3 status=None error=Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/errors#long-requests for more details. 等待 1.0s 后重试...
+2026-03-05 09:22:38.134 | WARNING  | src.inference_pipeline:generate:252 - LLM 请求失败 attempt=2/3 status=None error=Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/errors#long-requests for more details. 等待 2.0s 后重试...
+2026-03-05 09:23:12.644 | WARNING  | src.qq_adapter:_cmd_exit:580 - 收到 /exit 命令 (来自 2140523341)，正在关闭
+2026-03-05 09:39:11.573 | WARNING  | src.inference_pipeline:generate:252 - LLM 请求失败 attempt=1/3 status=None error=Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/errors#long-requests for more details. 等待 1.0s 后重试...
+2026-03-05 09:39:42.252 | WARNING  | src.qq_adapter:_cmd_exit:580 - 收到 /exit 命令 (来自 2140523341)，正在关闭
+2026-03-05 10:23:07.766 | ERROR    | __main__:main:122 - 图片加载失败: 图片文件不存在: D:\Users\21405\source\repos\MyNeuroLikeSystem\test\test_2.png
+2026-03-05 10:25:18.426 | WARNING  | src.inference_pipeline:generate:252 - LLM 请求失败 attempt=1/3 status=None error=Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/errors#long-requests for more details. 等待 1.0s 后重试...
+2026-03-05 10:26:53.024 | WARNING  | src.inference_pipeline:generate:252 - LLM 请求失败 attempt=2/3 status=None error=Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/errors#long-requests for more details. 等待 2.0s 后重试...
+2026-03-07 21:36:02.643 | WARNING  | src.qq_adapter:_cmd_exit:603 - 收到 /exit 命令 (来自 2140523341)，正在关闭

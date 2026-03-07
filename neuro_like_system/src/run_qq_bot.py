@@ -3,7 +3,7 @@
 
 用法：
     python run_qq_bot.py
-    python run_qq_bot.py --config path/to/config.json
+    python src/run_qq_bot.py --config config.json
 
 NapCat 配置：
     反向 WebSocket 地址填 ws://localhost:8080/xm
@@ -45,10 +45,12 @@ def main():
         personality=config.personality,
         llm_config=config.llm,
         llm_secondary_config=config.llm_secondary,
+        llm_vision_config=config.llm_vision,
         memory_config=config.memory,
         emotion_prompt_config=config.emotion_prompts,
         emotion_fusion_config=config.emotion_fusion,
         emotion_state_config=config.emotion_state_config,
+        attention_config=config.attention,
         device=config.device,
         time_awareness=config.agent.time_awareness,
     )
@@ -56,7 +58,7 @@ def main():
 
     # 3. 创建 QQ 适配器（先创建，获取 output_callback）
     from src.qq_adapter import QQBotAdapter
-    adapter = QQBotAdapter(config.qq_bot)
+    adapter = QQBotAdapter(config.qq_bot, image_config=config.image)
 
     # 4. 初始化 AgentLoop（用适配器的 callback）
     from src.agent_loop import AgentLoop

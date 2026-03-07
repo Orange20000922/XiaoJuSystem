@@ -378,6 +378,21 @@ class LLMConfig:
         )
 
 
+# ============== 注意力系统配置 ==============
+@dataclass
+class AttentionConfig:
+    """注意力系统配置"""
+    intensity_threshold: float = 0.7      # 情绪强度阈值（触发回复）
+    cooldown_seconds: int = 60            # 回复冷却时间（避免刷屏）
+    track_mentioned_users: bool = True    # 是否追踪被 @ 过的用户
+    mentioned_user_ttl: int = 300         # @ 用户的注意力保持时间（秒）
+    context_window_messages: int = 10     # 上下文窗口：最近 N 条消息内的用户视为活跃
+
+    # 非焦点回复控制（群聊中未 @ 且不在焦点内的用户）
+    non_focus_reply_interval: int = 180   # 非焦点回复最小间隔（秒），0 表示不限制
+    non_focus_max_token_ratio: float = 0.5  # 非焦点回复的 max_tokens 权重（相对于焦点内）
+
+
 # ============== Agent 事件循环配置 ==============
 @dataclass
 class AgentConfig:
@@ -538,6 +553,9 @@ class EmotionStateConfig:
     alpha: float = 0.80             # 状态惯性
     beta: float = 0.25              # AI 自身输出影响权重
     gamma: float = 0.12             # 用户情绪影响权重
+    delta: float = 0.15             # 均值回归强度（Ornstein-Uhlenbeck 回弹力）
+    baseline_valence: float = 0.15  # 人格情绪基线 valence（positive → 略正）
+    baseline_arousal: float = 0.25  # 人格情绪基线 arousal（适度活跃）
     noise_sigma: float = 0.05       # 随机噪声强度
     injection_threshold: float = 0.35  # |state| 超过此值才注入 prompt
     save_interval_turns: int = 5    # 每 N 轮保存一次到 L4
@@ -545,6 +563,20 @@ class EmotionStateConfig:
 
 
 DEFAULT_EMOTION_STATE_CONFIG = EmotionStateConfig()
+
+
+# ============== 图片识别配置 ==============
+@dataclass
+class ImageConfig:
+    """图片识别配置"""
+    enabled: bool = True
+    cache_dir: str = "./data/image_cache"
+    max_download_size_bytes: int = 10_485_760  # 10MB
+    max_dimension: int = 1568                  # Anthropic 推荐最大边长
+    max_images_per_message: int = 5
+    cache_ttl_seconds: int = 86400             # 24h
+    download_timeout: float = 15.0
+
 
 
 # ============== QQ 机器人配置 ==============
@@ -561,4 +593,45 @@ class QQBotConfig:
     command_prefix: str = "/"        # 命令前缀
     reply_with_at: bool = True       # 群聊回复时是否 @ 对方
     max_message_length: int = 500    # 单条消息最大长度，超过则分条发送
+
+
+# ============== TTS 音频配置 ==============
+@dataclass
+class AudioConfig:
+    """TTS 语音合成配置"""
+    enabled: bool = True
+    tts_provider: str = "cosyvoice"   # "cosyvoice" | "edge-tts"
+
+    # CosyVoice 源码仓库路径（源码包，需要手动指定）
+    cosyvoice_repo_dir: str = "D:\\Users\\21405\\source\\repos\\MyNeuroLikeSystem\\CosyVoice2\\CosyVoice"              # 例: "D:/repos/CosyVoice"
+    cosyvoice_model_dir: str = "./models/CosyVoice2-0.5B"
+    ref_audio_dir: str = "./data/audio_refs"
+    default_ref_audio: str = "test2.wav"
+    default_ref_text: str = ""
+    sample_rate: int = 22050
+    speed: float = 1.0
+
+    # 情绪 -> 参考音频映射
+    emotion_ref_map: Dict[str, Dict[str, str]] = field(default_factory=dict)
+
+    # 音频缓存
+    cache_dir: str = "./data/audio_cache"
+    cache_enabled: bool = True
+
+    # 播放
+    auto_play: bool = False
+
+
+# ============== ASR 语音识别配置 ==============
+@dataclass
+class SenseVoiceConfig:
+    """SenseVoice 语音识别配置"""
+    enabled: bool = True
+    model_id: str = "FunAudioLLM/SenseVoiceSmall"
+    model_dir: Optional[str] = None   # 本地模型路径（优先于 model_id）
+    device: str = "cuda"              # "cuda" | "cpu"
+    language: str = "auto"            # "zh" | "en" | "auto"
+    use_emotion: bool = True          # 是否启用情感识别
+    use_vad: bool = True              # 是否启用 VAD
+    batch_size: int = 1
 

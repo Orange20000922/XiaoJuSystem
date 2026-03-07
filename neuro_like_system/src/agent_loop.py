@@ -50,6 +50,10 @@ class AgentEvent:
     is_mentioned: bool = True
     timestamp: float = field(default_factory=time.time)
     reply_context: dict = field(default_factory=dict)  # 适配层回复路由信息
+    images: list = field(default_factory=list)         # 图片列表（ImageResult 对象）
+    user_id: Optional[int] = None                      # 用户 QQ 号（群聊注意力追踪）
+    user_name: Optional[str] = None                    # 用户昵称（群聊注意力追踪）
+    context_id: Optional[str] = None                   # 对话上下文标识（群号/私聊用户ID）
 
 
 class AgentLoop:
@@ -140,6 +144,9 @@ class AgentLoop:
 
     def _loop(self):
         """事件循环主体（在独立线程运行）"""
+        last_cleanup_time = time.time()
+        cleanup_interval = 300  # 每 5 分钟清理一次过期注意力状态
+
         while not self._stop_event.is_set():
             event = self._poll_event()
 
@@ -150,6 +157,13 @@ class AgentLoop:
                     self._handle_system_event(event)
             else:
                 self._check_proactive_triggers()
+
+            # 定期清理过期注意力状态
+            now = time.time()
+            if now - last_cleanup_time > cleanup_interval:
+                if hasattr(self.pipeline, 'attention_tracker'):
+                    self.pipeline.attention_tracker.cleanup_expired()
+                last_cleanup_time = now
 
     def _poll_event(self) -> Optional[AgentEvent]:
         """从队列取事件，带 timeout"""
@@ -168,9 +182,9 @@ class AgentLoop:
             logger.info(f"收到用户消息，状态从 {self.proactive_state.value} 重置为 normal")
             self.proactive_state = ProactiveState.NORMAL
 
-        # 群聊场景强制启用融合（注意力判断需要高准确率）
-        # 私聊场景使用配置默认值（None 会让 chat() 自动读取 config.use_by_default）
-        use_fusion = True if event.chat_mode == ChatMode.GROUP else None
+        # 群聊场景：被 @ 时启用融合（提高注意力判断准确率）
+        # 未被 @ 时使用配置默认值（None 会让 chat() 自动读取 config.use_by_default）
+        use_fusion = True if (event.chat_mode == ChatMode.GROUP and event.is_mentioned) else None
 
         try:
             result = self.pipeline.chat(
@@ -178,6 +192,10 @@ class AgentLoop:
                 is_mentioned=event.is_mentioned,
                 chat_mode=event.chat_mode,
                 use_fusion=use_fusion,
+                images=event.images,
+                user_id=event.user_id,
+                user_name=event.user_name,
+                context_id=event.context_id,
             )
 
             if result["should_respond"] and result["response"]:
@@ -185,6 +203,9 @@ class AgentLoop:
 
         except Exception as e:
             logger.error(f"处理消息失败: {e}")
+        finally:
+            # 清空当前回复上下文，避免主动发言误用
+            self._current_reply_context = {}
 
     def _handle_system_event(self, event: AgentEvent):
         """处理系统事件（低级主动：由外部事件触发）"""
@@ -206,16 +227,17 @@ class AgentLoop:
 
     def _check_proactive_triggers(self):
         """根据 proactive_level 和状态机检查是否需要主动发言"""
-        # 如果启用了主动决策模块，优先使用新的决策逻辑（忽略 proactive_level）
+        # 如果 proactive_level 为 off，完全禁用主动发言（包括决策模块）
+        if self.config.proactive_level == "off":
+            return
+
+        # 如果启用了主动决策模块，优先使用新的决策逻辑
         if self.decision_module:
             self._check_proactive_with_decision()
             return
 
         # 否则使用原有的简单逻辑
         level = self.config.proactive_level
-
-        if level == "off":
-            return
 
         if level == "low":
             # low 级别只响应系统事件（已在 _handle_system_event 中处理），

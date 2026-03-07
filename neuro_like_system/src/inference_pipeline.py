@@ -48,6 +48,7 @@ from configs.model_config import (
     EmotionPromptConfig,
     EmotionFusionConfig,
     EmotionStateConfig,
+    AttentionConfig,
     LLMConfig,
     LLMProvider,
     MemoryConfig,
@@ -56,6 +57,8 @@ from configs.config_loader import AppConfig
 from src.memory_manager import HierarchicalMemoryManager
 from src.emotion_fusion import LLMEmotionClassifier, EmotionNeuronFusion
 from src.emotion_state import EmotionStateTracker, EmotionState
+from src.attention_tracker import AttentionTracker
+from src.llm.client import LLMClient
 
 
 class ChatMode(Enum):
@@ -74,6 +77,7 @@ class ConversationTurn:
     tone: str
     response: str
     timestamp: Optional[str] = None
+    context_id: Optional[str] = None  # 对话上下文标识（群号/私聊用户ID）
 
 
 class MemoryManager:
@@ -105,288 +109,6 @@ class MemoryManager:
             lines.append(f"助手: {turn.response}")
 
         return "\n".join(lines)
-
-
-class LLMClient:
-    """大模型API客户端 (支持多种API)"""
-
-    def __init__(self, config: LLMConfig):
-        """
-        初始化LLM客户端
-
-        Args:
-            config: LLMConfig配置对象
-        """
-        self.config = config
-        self.provider = config.provider
-        self.model = config.model
-        self.base_url = config.base_url
-        self.api_key = config.api_key
-
-        # 验证API密钥
-        if not self.api_key:
-            raise ValueError(
-                f"API密钥未设置。请设置环境变量或在配置中提供api_key。\n"
-                f"Provider: {self.provider.value}"
-            )
-
-        # 初始化客户端
-        self._init_client()
-
-    def _init_client(self):
-        """初始化API客户端"""
-        if self.provider in [LLMProvider.OPENAI, LLMProvider.DEEPSEEK, LLMProvider.CUSTOM]:
-            from openai import OpenAI
-            self.client = OpenAI(
-                api_key=self.api_key,
-                base_url=self.base_url,
-                timeout=self.config.timeout
-            )
-        elif self.provider == LLMProvider.ANTHROPIC:
-            import anthropic, httpx
-
-            kwargs = {"api_key": self.api_key, "timeout": self.config.timeout}
-            if self.base_url:
-                kwargs["base_url"] = self.base_url
-                # 代理模式：环境变量 ANTHROPIC_AUTH_TOKEN（Claude Code 登录 token）
-                # 会让 SDK 同时发送 x-api-key 和 Authorization 两个 header，
-                # 导致代理报 401 "冲突的 API 密钥"。
-                # 用 httpx event hook 在请求发出前移除 Authorization header。
-                def _strip_bearer(request: httpx.Request):
-                    if "authorization" in request.headers:
-                        del request.headers["authorization"]
-
-                kwargs["http_client"] = httpx.Client(
-                    event_hooks={"request": [_strip_bearer]}
-                )
-            self.client = anthropic.Anthropic(**kwargs)
-        else:
-            raise ValueError(f"不支持的provider: {self.provider}")
-
-    def generate(
-        self,
-        system_prompt: str = None,
-        user_input: str = "",
-        max_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-        history: Optional[List[Dict]] = None,
-        system_blocks: Optional[List[Dict]] = None,
-    ) -> str:
-        """
-        生成回复，带指数退避重试。
-
-        Args:
-            system_prompt: 单块 system prompt（向后兼容）
-            system_blocks: 多块 system prompt（优先使用，用于 Anthropic 缓存优化）
-            user_input: 用户输入
-            max_tokens: 最大 token 数
-            temperature: 温度
-            history: 对话历史（OpenAI 格式）
-
-        可重试错误（网络/限流/服务端临时故障）：最多 max_retries 次。
-        不可重试错误（认证失败/请求参数非法）：立即抛出，不重试。
-        """
-        max_tokens = max_tokens or self.config.max_tokens
-        temperature = temperature or self.config.temperature
-        top_p = top_p or self.config.top_p
-
-        delay = self.config.retry_delay
-
-        for attempt in range(self.config.max_retries):
-            try:
-                logger.debug(
-                    f"LLM 请求 attempt={attempt + 1}/{self.config.max_retries} "
-                    f"model={self.model} max_tokens={max_tokens}"
-                )
-                if self.provider in [LLMProvider.OPENAI, LLMProvider.DEEPSEEK,
-                                     LLMProvider.CUSTOM]:
-                    if self.config.use_responses_api:
-                        result = self._generate_responses_api(
-                            system_prompt, user_input, max_tokens, temperature,
-                            top_p=top_p,
-                            history=history,
-                        )
-                    else:
-                        result = self._generate_openai_compatible(
-                            system_prompt, user_input, max_tokens, temperature,
-                            top_p=top_p,
-                            history=history,
-                        )
-                else:
-                    result = self._generate_anthropic(
-                        system_prompt, user_input, max_tokens, temperature,
-                        top_p=top_p,
-                        system_blocks=system_blocks,
-                    )
-                logger.debug(f"LLM 响应成功 长度={len(result)} chars")
-                return result
-
-            except Exception as e:
-                err_str = str(e)
-                status_code = getattr(e, "status_code", None)
-
-                # ── 不可重试：认证/权限/请求参数错误 ──────────────────
-                if status_code in (401, 403, 422):
-                    logger.error(
-                        f"LLM 不可重试错误 status={status_code}: {err_str}"
-                    )
-                    raise
-
-                # ── 不可重试：上下文超长 ────────────────────────────────
-                if status_code == 400 and "context" in err_str.lower():
-                    logger.error(f"LLM 上下文超长 status=400: {err_str}")
-                    raise
-
-                # ── 可重试：限流 / 服务不可用 / 网络超时 ────────────────
-                is_last = attempt >= self.config.max_retries - 1
-                if is_last:
-                    logger.error(
-                        f"LLM 请求失败，已达最大重试次数 {self.config.max_retries}: {err_str}"
-                    )
-                    raise
-
-                logger.warning(
-                    f"LLM 请求失败 attempt={attempt + 1}/{self.config.max_retries} "
-                    f"status={status_code} error={err_str} "
-                    f"等待 {delay:.1f}s 后重试..."
-                )
-                time.sleep(delay)
-                delay = min(delay * self.config.retry_backoff,
-                            self.config.retry_max_delay)
-
-    def _generate_openai_compatible(
-        self,
-        system_prompt: str,
-        user_input: str,
-        max_tokens: int,
-        temperature: float,
-        top_p: Optional[float] = None,
-        history: Optional[List[Dict]] = None,
-    ) -> str:
-        """
-        OpenAI 兼容 API 生成。
-        history 为 L1 原文 messages 列表，直接拼入上下文窗口。
-        """
-        messages = [{"role": "system", "content": system_prompt}]
-        if history:
-            messages.extend(history)
-        messages.append({"role": "user", "content": user_input})
-
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p if top_p is not None else self.config.top_p,
-            frequency_penalty=self.config.frequency_penalty,
-            presence_penalty=self.config.presence_penalty,
-        )
-        return response.choices[0].message.content
-
-    def _generate_responses_api(
-        self,
-        system_prompt: str,
-        user_input: str,
-        max_tokens: int,
-        temperature: float,
-        top_p: Optional[float] = None,
-        history: Optional[List[Dict]] = None,
-    ) -> str:
-        """OpenAI Responses API（/v1/responses）格式生成"""
-        # 构造 input：历史 messages + 当前用户输入
-        input_messages = list(history) if history else []
-        input_messages.append({"role": "user", "content": user_input})
-
-        response = self.client.responses.create(
-            model=self.model,
-            instructions=system_prompt,
-            input=input_messages,
-            max_output_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p if top_p is not None else self.config.top_p,
-        )
-        return response.output[0].content[0].text
-
-    def _generate_anthropic(
-        self,
-        system_prompt: str,
-        user_input: str,
-        max_tokens: int,
-        temperature: float,
-        top_p: Optional[float] = None,
-        system_blocks: Optional[List[Dict]] = None
-    ) -> str:
-        """
-        Anthropic API生成（支持多块 system prompt 以优化缓存）
-
-        Args:
-            system_prompt: 单块 system prompt（向后兼容）
-            system_blocks: 多块 system prompt（优先使用，用于缓存优化）
-        """
-        if system_blocks:
-            # 使用多块 system prompt（缓存优化）
-            system_content = system_blocks
-        else:
-            # 向后兼容：单块 system prompt
-            system_content = [
-                {
-                    "type": "text",
-                    "text": system_prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ]
-
-        response = self.client.messages.create(
-            model=self.model,
-            system=system_content,
-            messages=[{"role": "user", "content": user_input}],
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p if top_p is not None else self.config.top_p,
-        )
-        import re
-        # 优先取 text 类型 block，过滤 thinking block
-        for block in response.content:
-            if block.type == "text":
-                # 部分供应商把 <thinking>...</thinking> 混在 text 里，过滤掉
-                text = re.sub(r"<thinking>.*?</thinking>\s*", "", block.text,
-                              flags=re.DOTALL).strip()
-                return text if text else block.text
-        return response.content[0].text
-
-    @classmethod
-    def from_config(cls, config: LLMConfig) -> "LLMClient":
-        """从配置创建客户端"""
-        return cls(config)
-
-    @classmethod
-    def from_args(
-        cls,
-        provider: str = "openai",
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
-        base_url: Optional[str] = None
-    ) -> "LLMClient":
-        """从参数创建客户端（向后兼容）"""
-        provider_enum = LLMProvider(provider.lower())
-
-        # 设置默认模型
-        default_models = {
-            LLMProvider.OPENAI: "gpt-5",
-            LLMProvider.DEEPSEEK: "deepseek-chat",
-            LLMProvider.ANTHROPIC: "claude-3-5-haiku-20241022",
-            LLMProvider.CUSTOM: "gpt-5"
-        }
-        model = model or default_models.get(provider_enum, "gpt-5")
-
-        config = LLMConfig(
-            provider=provider_enum,
-            api_key=api_key,
-            model=model,
-            base_url=base_url
-        )
-        return cls(config)
 
 
 # 情绪 → max_tokens 权重（相对于 config.max_tokens）
@@ -423,10 +145,12 @@ class NeuroLikePipeline:
         personality: PersonalityConfig,
         llm_config: Optional[LLMConfig] = None,
         llm_secondary_config: Optional[LLMConfig] = None,
+        llm_vision_config: Optional[LLMConfig] = None,
         memory_config: Optional[MemoryConfig] = None,
         emotion_prompt_config: Optional[EmotionPromptConfig] = None,
         emotion_fusion_config: Optional[EmotionFusionConfig] = None,
         emotion_state_config: Optional[EmotionStateConfig] = None,
+        attention_config: Optional[AttentionConfig] = None,
         # 向后兼容的参数
         llm_provider: Optional[str] = None,
         llm_api_key: Optional[str] = None,
@@ -443,15 +167,18 @@ class NeuroLikePipeline:
             personality: 人格配置
             llm_config: 主 LLM 配置（Claude，私聊 + 群聊升级）
             llm_secondary_config: 副 LLM 配置（DeepSeek 等廉价模型，群聊默认）
+            llm_vision_config: 图片专用 LLM 配置（有图片时优先路由，可选）
             memory_config: 记忆系统配置
             emotion_prompt_config: BERT 输出 → Prompt 指令映射配置
             emotion_fusion_config: BERT + LLM 情绪融合配置
+            attention_config: 注意力系统配置
             device: 运行设备
         """
         self.personality = personality
         self.device = device
         self.emotion_prompt_config = emotion_prompt_config
         self.time_awareness = time_awareness
+        self.attention_config = attention_config or AttentionConfig()
 
         # 加载小模型（BERT 不可用时回退为 None，纯 LLM 模式）
         try:
@@ -494,6 +221,16 @@ class NeuroLikePipeline:
         else:
             self.llm_client_secondary = None
 
+        # 图片专用 LLM 客户端（可选，有图片时优先路由）
+        if llm_vision_config is not None:
+            logger.info(
+                f"初始化图片专用 LLM 客户端 "
+                f"({llm_vision_config.provider.value}: {llm_vision_config.model})"
+            )
+            self.llm_client_vision = LLMClient(llm_vision_config)
+        else:
+            self.llm_client_vision = None
+
         # 情绪融合（BERT + LLM）
         self.emotion_fusion_config = emotion_fusion_config
         if emotion_fusion_config and emotion_fusion_config.enabled and emotion_prompt_config:
@@ -534,6 +271,10 @@ class NeuroLikePipeline:
         else:
             self.emotion_state_tracker = None
 
+        # 注意力追踪器（群聊场景）
+        self.attention_tracker = AttentionTracker(self.attention_config)
+        logger.info("注意力追踪器已启用")
+
         # 人格向量
         self.personality_vector = torch.tensor(
             personality.to_embedding_vector(),
@@ -550,10 +291,12 @@ class NeuroLikePipeline:
             personality=app_cfg.personality,
             llm_config=app_cfg.llm,
             llm_secondary_config=app_cfg.llm_secondary,
+            llm_vision_config=app_cfg.llm_vision,
             memory_config=app_cfg.memory,
             emotion_prompt_config=app_cfg.emotion_prompts,
             emotion_fusion_config=app_cfg.emotion_fusion,
             emotion_state_config=app_cfg.emotion_state_config,
+            attention_config=app_cfg.attention,
             device=app_cfg.device,
             time_awareness=app_cfg.agent.time_awareness,
         )
@@ -865,16 +608,25 @@ class NeuroLikePipeline:
         chat_mode: ChatMode,
         emotion_analysis: Optional[Dict],
         is_mentioned: bool,
+        images: Optional[list] = None,
+        in_attention_focus: bool = False,
     ) -> "LLMClient":
         """
         根据对话模式和 BERT 分析选择 LLM 客户端。
 
+        有图片且 vision client 存在 → vision LLM（最高优先）
         私聊：始终用主 LLM（Claude）
         群聊：默认副 LLM（DeepSeek），以下情况升级到主 LLM：
           - 被 @ 提及（直接对话，用户期望高质量回复）
+          - 在注意力焦点内（最近 @ 过，持续关注）
           - 高置信度的强情绪（需要细腻的情感处理）
           - 副 LLM 不可用时回退到主 LLM
         """
+        # 有图片且 vision client 存在 → vision LLM
+        if images and self.llm_client_vision is not None:
+            logger.debug("路由: 图片 → vision LLM")
+            return self.llm_client_vision
+
         # 私聊 or 没有副 LLM → 主 LLM
         if chat_mode == ChatMode.PRIVATE or self.llm_client_secondary is None:
             return self.llm_client
@@ -882,6 +634,11 @@ class NeuroLikePipeline:
         # 群聊：被 @ → 主 LLM
         if is_mentioned:
             logger.debug("路由: @提及 → 主 LLM")
+            return self.llm_client
+
+        # 群聊：在注意力焦点内 → 主 LLM
+        if in_attention_focus:
+            logger.debug("路由: 注意力焦点内 → 主 LLM")
             return self.llm_client
 
         # 群聊：检查 BERT 是否检测到需要升级的强情绪
@@ -907,7 +664,9 @@ class NeuroLikePipeline:
                           recalled_context: str = "",
                           history: Optional[List[Dict]] = None,
                           emotion_analysis: Optional[Dict] = None,
-                          client: Optional["LLMClient"] = None) -> str:
+                          client: Optional["LLMClient"] = None,
+                          images: Optional[List] = None,
+                          in_attention_focus: bool = True) -> str:
         """
         使用大模型生成回复。
 
@@ -917,9 +676,19 @@ class NeuroLikePipeline:
             history: L1 原文 messages 列表（进 messages 数组）
             emotion_analysis: BERT 情绪分析结果（注入 system prompt）
             client: 指定 LLM 客户端（路由选择的结果）
+            images: 图片列表（ImageResult 对象，仅 Anthropic 支持）
+            in_attention_focus: 是否在注意力焦点内（影响 max_tokens）
         """
         c = client or self.llm_client
         max_tokens = self._adaptive_max_tokens(emotion_analysis, c)
+
+        # 非焦点回复：降低 max_tokens（减少回复长度，避免过于啰嗦）
+        if not in_attention_focus:
+            max_tokens = int(max_tokens * self.attention_config.non_focus_max_token_ratio)
+            logger.debug(
+                f"非焦点回复：max_tokens 降低至 {max_tokens} "
+                f"(ratio={self.attention_config.non_focus_max_token_ratio})"
+            )
 
         # 情感分析全量日志（供研究/调参，结构化数据不进 prompt）
         if emotion_analysis:
@@ -972,9 +741,10 @@ class NeuroLikePipeline:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
+                images=images,
             )
         else:
-            # 其他 provider 使用单块 system prompt
+            # 其他 provider 使用单块 system prompt + OpenAI 格式图片
             system_prompt = self.build_system_prompt(recalled_context, emotion_analysis)
             return c.generate(
                 system_prompt=system_prompt,
@@ -983,6 +753,7 @@ class NeuroLikePipeline:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
+                images=images,
             )
 
     def should_respond(self, emotion_behavior: Dict, is_mentioned: bool = False) -> bool:
@@ -1002,8 +773,8 @@ class NeuroLikePipeline:
         intensity = emotion_behavior["emotion"]["intensity"]
         behavior = emotion_behavior["behavior"]["type"]
 
-        # 高强度情绪或问句行为触发回复
-        if intensity >= 0.7:
+        # 使用配置中的情绪强度阈值
+        if intensity >= self.attention_config.intensity_threshold:
             return True
         if behavior in ("ask_question", "seek_clarification"):
             return True
@@ -1013,7 +784,11 @@ class NeuroLikePipeline:
     def chat(self, user_input: str, verbose: bool = False,
              is_mentioned: bool = True,
              chat_mode: ChatMode = ChatMode.PRIVATE,
-             use_fusion: bool = None) -> Dict:
+             use_fusion: bool = None,
+             images: Optional[List] = None,
+             user_id: Optional[int] = None,
+             user_name: Optional[str] = None,
+             context_id: Optional[str] = None) -> Dict:
         """
         完整对话流程
 
@@ -1023,16 +798,46 @@ class NeuroLikePipeline:
             is_mentioned: 是否被 @ 提及（群聊场景传入）
             chat_mode: 对话模式（PRIVATE=私聊纯 Claude，GROUP=群聊 BERT 路由）
             use_fusion: 是否启用情绪融合（None=使用配置默认值，True/False=强制覆盖）
+            images: 图片列表（ImageResult 对象，仅 Anthropic 支持）
+            user_id: 用户 QQ 号（群聊场景传入，用于注意力追踪）
+            user_name: 用户昵称（群聊场景传入）
+            context_id: 对话上下文标识（群号/私聊用户ID，用于隔离 L1 记忆）
 
-        Returns:
-            {
-                "response": 回复文本，若 should_respond=False 则为 None,
-                "emotion": BERT 情绪分析结果（旁路元数据）,
-                "behavior": BERT 行为分析结果（旁路元数据）,
-                "should_respond": bool,
-                "debug_info": {...}
-            }
         """
+        # ── 群聊注意力追踪 ────────────────────────────────────────────────
+        if chat_mode == ChatMode.GROUP and user_id is not None:
+            logger.debug(
+                f"[注意力追踪] 记录消息: user_id={user_id} "
+                f"user_name={user_name} is_mentioned={is_mentioned}"
+            )
+            self.attention_tracker.on_message(
+                user_id=user_id,
+                user_name=user_name or str(user_id),
+                is_mentioned=is_mentioned,
+            )
+
+        # ── 群聊注意力路由优化 ────────────────────────────────────────────
+        # 未被 @ 的消息：检查用户是否在注意力焦点内
+        # - 在焦点内 → 执行完整 pipeline，可能升级到主 LLM
+        # - 不在焦点内 → 执行完整 pipeline，使用副 LLM（如果满足回复条件）
+        # 注意：不再直接拦截，而是通过 LLM 路由和注意力判断来决定是否回复
+        in_attention_focus = False
+        if chat_mode == ChatMode.GROUP and not is_mentioned and user_id is not None:
+            # 检查用户是否在注意力焦点内（最近 5 分钟内 @ 过）
+            user = self.attention_tracker.users.get(user_id)
+            in_attention_focus = (
+                user is not None
+                and self.attention_config.track_mentioned_users
+                and user.is_mentioned_active(self.attention_config.mentioned_user_ttl)
+            )
+
+            logger.debug(
+                f"[注意力路由] user_id={user_id} "
+                f"in_focus={in_attention_focus}"
+            )
+
+
+        # ── 完整 Pipeline（私聊 or 群聊被 @）────────────────────────────
         # 决定是否启用融合：优先使用显式参数，否则使用配置默认值
         if use_fusion is None:
             use_fusion = (
@@ -1054,8 +859,13 @@ class NeuroLikePipeline:
                 )
                 emotion_behavior = _f_emotion.result()
                 recalled = _f_recalled.result()
-            history = self.memory.get_messages_history()
-            logger.debug(f"记忆 {self.memory.l1_usage} L1轮次={len(self.memory.working_memory)}")
+            # 按 context_id 过滤 L1 记忆，初步限制 messages 数组长度
+            # 后续会根据路由到的 LLM 进一步调整（DeepSeek 需要更严格的限制）
+            history = self.memory.get_messages_history(context_id=context_id, max_turns=40)
+            logger.debug(
+                f"记忆 {self.memory.l1_usage} L1轮次={len(self.memory.working_memory)} "
+                f"context={context_id} messages={len(history) if history else 0}"
+            )
         else:
             emotion_behavior = self._analyze_emotion_with_fusion(user_input, use_fusion=use_fusion)
             recalled = self.memory.format_context(num_turns=5)
@@ -1083,20 +893,54 @@ class NeuroLikePipeline:
             logger.debug("BERT 不可用，使用默认情绪值")
 
         # ── 注意力判断 ────────────────────────────────────────────────────
-        respond = self.should_respond(emotion_behavior, is_mentioned)
+        # 群聊场景使用注意力追踪器（考虑用户级注意力和冷却）
+        if chat_mode == ChatMode.GROUP and user_id is not None:
+            respond = self.attention_tracker.should_respond(
+                user_id=user_id,
+                emotion_intensity=intensity,
+                behavior_type=behavior_type,
+                is_mentioned=is_mentioned,
+                in_attention_focus=in_attention_focus,
+            )
+        else:
+            # 私聊场景使用简单判断
+            respond = self.should_respond(emotion_behavior, is_mentioned)
+
         if not respond:
             logger.debug("注意力判断：跳过回复，仅记录记忆")
 
         # ── LLM 路由 + 生成 ──────────────────────────────────────────────
         response = None
         routed_client = self._route_llm_client(
-            chat_mode, emotion_behavior, is_mentioned
+            chat_mode, emotion_behavior, is_mentioned,
+            images=images,
+            in_attention_focus=in_attention_focus
         )
+
+        # 根据路由到的 LLM 动态调整 history 长度（不同 API 的 context window 不同）
+        if history and routed_client:
+            # DeepSeek: 64K context window，需要更严格的限制
+            if routed_client == self.llm_client_secondary:
+                max_turns_for_api = 15  # DeepSeek 限制更严格
+                if len(history) > max_turns_for_api * 2:
+                    logger.debug(
+                        f"DeepSeek API 限制：截断 history 为最近 {max_turns_for_api} 轮 "
+                        f"({len(history)} → {max_turns_for_api * 2} 条)"
+                    )
+                    history = history[-(max_turns_for_api * 2):]
+            # Claude/GLM: 128K+ context window，可以使用更多轮次
+            else:
+                max_turns_for_api = 30
+                if len(history) > max_turns_for_api * 2:
+                    history = history[-(max_turns_for_api * 2):]
+
         if respond:
             response = self.generate_response(
                 user_input, recalled, history,
                 emotion_analysis=emotion_behavior,
                 client=routed_client,
+                images=images,
+                in_attention_focus=in_attention_focus or is_mentioned,
             )
 
         # ── 情绪状态机更新 ──────────────────────────────────────────────
@@ -1126,17 +970,23 @@ class NeuroLikePipeline:
                 from concurrent.futures import ThreadPoolExecutor
                 ThreadPoolExecutor(max_workers=1).submit(self._save_emotion_state)
 
-        # ── 记忆写入（无论是否回复都记录，群聊静默观察也积累上下文）──────
-        turn = ConversationTurn(
-            user_input=user_input,
-            emotion=emotion_primary,
-            intensity=intensity,
-            behavior=behavior_type,
-            tone=tone,
-            response=response or "",
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        )
-        self.memory.add(turn)
+        # ── 记忆写入（只有回复时才写入，避免空轮次污染记忆）──────────────
+        if respond and response:
+            turn = ConversationTurn(
+                user_input=user_input,
+                emotion=emotion_primary,
+                intensity=intensity,
+                behavior=behavior_type,
+                tone=tone,
+                response=response,
+                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                context_id=context_id,
+            )
+            self.memory.add(turn)
+
+            # 更新注意力追踪器的回复时间
+            if chat_mode == ChatMode.GROUP and user_id is not None:
+                self.attention_tracker.on_reply(user_id)
 
         return {
             "response": response,
@@ -1147,6 +997,45 @@ class NeuroLikePipeline:
                 "model_provider": routed_client.provider.value,
                 "model_name": routed_client.model,
                 "chat_mode": chat_mode.value,
+            },
+        }
+
+    def _handle_group_passive_message(self, user_input: str, context_id: Optional[str] = None) -> Dict:
+        """
+        群聊被动消息处理（未被 @）：仅写入 L1 记忆，不执行 BERT/LLM。
+
+        目的：让 AI 知道群里最近的话题，但不消耗 API 额度。
+
+        Args:
+            user_input: 用户输入（含 [sender_name] 前缀）
+
+        Returns:
+            标准 chat() 返回格式，should_respond=False
+        """
+        logger.debug(f"群聊被动消息（未 @）：仅记录 L1 → {user_input[:50]}")
+
+        # 写入 L1 记忆（空 response，标记为未回复）
+        turn = ConversationTurn(
+            user_input=user_input,
+            emotion="neutral",
+            intensity=0.0,
+            behavior="neutral_acknowledge",
+            tone="calm",
+            response="",  # 空回复，表示未响应
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            context_id=context_id,
+        )
+        self.memory.add(turn)
+
+        return {
+            "response": None,
+            "emotion": {"primary": "neutral", "intensity": 0.0},
+            "behavior": {"type": "neutral_acknowledge", "tone": "calm"},
+            "should_respond": False,
+            "debug_info": {
+                "model_provider": "none",
+                "model_name": "none",
+                "chat_mode": "group_passive",
             },
         }
 

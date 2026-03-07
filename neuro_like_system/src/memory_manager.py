@@ -242,6 +242,16 @@ class HierarchicalMemoryManager:
         self.working_memory = self.working_memory[cut:]
         self._l1_tokens = max(0, self._l1_tokens - removed_tokens)
 
+        # 重置 session（压缩后开始新会话，避免 messages 数组累积）
+        old_session = self.session_id
+        self.session_id = f"session_{int(time.time())}"
+        from src.logger import logger
+        logger.info(
+            f"L1 压缩完成：移除 {len(to_compress)} 轮 ({removed_tokens} tokens)，"
+            f"保留 {len(self.working_memory)} 轮 ({self._l1_tokens} tokens)，"
+            f"session 重置 {old_session[-8:]} → {self.session_id[-8:]}"
+        )
+
     # ── L2 → L3 会话结束 ─────────────────────────────────────────────────
 
     def close_session(self):
@@ -492,17 +502,36 @@ class HierarchicalMemoryManager:
 
         return "\n".join(sections) if sections else ""
 
-    def get_messages_history(self) -> List[Dict]:
+    def get_messages_history(self, context_id: Optional[str] = None, max_turns: Optional[int] = None) -> List[Dict]:
         """
         返回 L1 working_memory 的 OpenAI messages 格式列表。
         直接传入 API 的 messages 数组，让 API 在真实窗口内维护上下文。
+
+        Args:
+            context_id: 对话上下文标识（群号/私聊用户ID），None 表示返回所有记忆
+            max_turns: 最多返回最近 N 轮对话（None 表示返回所有），用于限制 messages 数组长度
         """
         messages = []
         for turn in self.working_memory:
+            # 如果指定了 context_id，只返回匹配的记忆
+            if context_id is not None and turn.context_id != context_id:
+                continue
+
             if turn.user_input:
                 messages.append({"role": "user", "content": turn.user_input})
             if turn.response:
                 messages.append({"role": "assistant", "content": turn.response})
+
+        # 限制 messages 数量（保留最近的 N 轮，每轮 2 条 message）
+        if max_turns is not None and max_turns > 0:
+            max_messages = max_turns * 2
+            if len(messages) > max_messages:
+                from src.logger import logger
+                logger.debug(
+                    f"messages 数组过长 ({len(messages)} 条)，截断为最近 {max_turns} 轮 ({max_messages} 条)"
+                )
+                messages = messages[-max_messages:]
+
         return messages
 
     # 向后兼容

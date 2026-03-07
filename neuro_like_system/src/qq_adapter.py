@@ -20,6 +20,7 @@ QQ 机器人适配层
 """
 
 import asyncio
+import html
 import json
 import re
 import time
@@ -35,7 +36,8 @@ from websockets.http11 import Request, Response
 from src.logger import logger
 from src.agent_loop import AgentLoop, AgentEvent
 from src.inference_pipeline import ChatMode
-from configs.model_config import QQBotConfig
+from configs.model_config import QQBotConfig, ImageConfig
+from src.image_utils import process_image_url, ImageResult, PILLOW_AVAILABLE
 
 
 # ============== CQ 码解析工具 ==============
@@ -53,6 +55,7 @@ def parse_cq_codes(message: str) -> tuple:
     Returns:
         (plain_text, cq_codes): 纯文本和 CQ 码列表
             cq_codes 每个元素为 {"type": "at", "qq": "12345", ...}
+            图片 CQ 码包含 "url" 字段
     """
     cq_codes = []
     for match in CQ_PATTERN.finditer(message):
@@ -74,6 +77,27 @@ def is_at_me(cq_codes: list, bot_qq: int) -> bool:
         c["type"] == "at" and str(c.get("qq")) == str(bot_qq)
         for c in cq_codes
     )
+
+
+def extract_image_urls(cq_codes: list, max_images: int = 5) -> List[str]:
+    """
+    从 CQ 码中提取图片 URL。
+
+    Args:
+        cq_codes: CQ 码列表
+        max_images: 最多提取几张图片
+
+    Returns:
+        图片 URL 列表
+    """
+    urls = []
+    for c in cq_codes:
+        if c["type"] == "image" and "url" in c:
+            # CQ 码中的 URL 可能包含 HTML 转义（如 &amp; → &）
+            urls.append(html.unescape(c["url"]))
+            if len(urls) >= max_images:
+                break
+    return urls
 
 
 # ============== 命令定义 ==============
@@ -101,8 +125,9 @@ class QQBotAdapter:
     将 QQ 消息转发给 AgentLoop，并将 AI 回复发回 QQ。
     """
 
-    def __init__(self, config: QQBotConfig):
+    def __init__(self, config: QQBotConfig, image_config: Optional[ImageConfig] = None):
         self.config = config
+        self.image_config = image_config or ImageConfig()
         self.agent_loop: Optional[AgentLoop] = None
         self.ws_connection: Optional[ServerConnection] = None
         self.async_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -202,8 +227,18 @@ class QQBotAdapter:
 
         # 解析 CQ 码
         plain_text, cq_codes = parse_cq_codes(str(raw_message))
-        if not plain_text:
-            return  # 纯图片/表情等，暂不处理
+
+        # 提取图片 URL
+        image_urls = []
+        if self.image_config.enabled and PILLOW_AVAILABLE:
+            image_urls = extract_image_urls(
+                cq_codes,
+                max_images=self.image_config.max_images_per_message
+            )
+
+        # 纯图片消息：plain_text 为空但有图片
+        if not plain_text and not image_urls:
+            return  # 纯表情等，跳过
 
         # 检测 @
         if msg_type == "group":
@@ -234,24 +269,53 @@ class QQBotAdapter:
         else:
             sender_name = raw_name
 
-        # 群聊和私聊都在内容前加发送者名称，便于 AI 区分
-        content = f"[{sender_name}] {plain_text}"
+        # 异步下载图片（在 asyncio 上下文中，不阻塞 AgentLoop 线程）
+        images = []
+        if image_urls:
+            logger.info(f"检测到 {len(image_urls)} 张图片，开始下载...")
+            images = await self._download_images_async(image_urls)
+            if images:
+                logger.info(f"成功下载 {len(images)} 张图片")
+            else:
+                logger.warning("所有图片下载失败")
+
+        # 纯图片且下载全失败 → 跳过
+        if not plain_text and not images:
+            logger.debug("纯图片消息但下载全失败，跳过")
+            return
+
+        # 构造消息内容（图片下载完成后，才能判断是否为纯图片）
+        if plain_text:
+            content = f"[{sender_name}] {plain_text}"
+        else:
+            content = f"[{sender_name}] [用户发送了图片]"
 
         logger.info(
             f"{'群聊' if msg_type == 'group' else '私聊'} "
             f"来自 {sender_name}({user_id})"
             f"{f' 群{group_id}' if group_id else ''}: "
-            f"{plain_text[:80]}"
+            f"{plain_text[:80] if plain_text else '[纯图片]'}"
+            f"{f' +{len(images)}张图' if images else ''}"
         )
 
         # 推送到 AgentLoop
         if self.agent_loop:
+            # 构造 context_id：群聊用 group_{group_id}，私聊用 private_{user_id}
+            if msg_type == "group":
+                context_id = f"group_{group_id}"
+            else:
+                context_id = f"private_{user_id}"
+
             self.agent_loop.push(AgentEvent(
                 type="message",
                 content=content,
                 chat_mode=ChatMode.GROUP if msg_type == "group" else ChatMode.PRIVATE,
                 is_mentioned=mentioned,
                 reply_context=reply_target,
+                images=images,
+                user_id=user_id,
+                user_name=sender_name,
+                context_id=context_id,
             ))
 
     def _make_output_callback(self) -> Callable[[str], None]:
@@ -264,6 +328,7 @@ class QQBotAdapter:
         回复路由优先级：
         1. AgentLoop._current_reply_context（当前正在处理的事件绑定的目标）
         2. _last_reply_target（fallback，用于主动发言）
+        3. 如果都没有 → 发给 owner（系统通知兜底）
         """
         adapter = self
 
@@ -274,8 +339,18 @@ class QQBotAdapter:
                 if adapter.agent_loop and adapter.agent_loop._current_reply_context
                 else adapter._last_reply_target
             )
-            if not target or not adapter.ws_connection:
-                logger.warning("无法发送消息: 无回复目标或无 WS 连接")
+
+            # 如果没有回复目标（系统启动时的主动发言等），发给 owner
+            if not target:
+                if adapter.config.owner_qq:
+                    logger.info("无回复目标，系统消息发送给 owner")
+                    adapter.notify_owner_sync(text)
+                else:
+                    logger.warning("无法发送消息: 无回复目标且未配置 owner_qq")
+                return
+
+            if not adapter.ws_connection:
+                logger.warning("无法发送消息: 无 WS 连接")
                 return
 
             # 长消息分条发送
@@ -299,6 +374,48 @@ class QQBotAdapter:
                     adapter.notify_owner_sync(f"[异常] 发送消息失败: {e}")
 
         return callback
+
+    async def _download_images_async(self, urls: List[str]) -> List[ImageResult]:
+        """
+        异步下载图片（在 asyncio 上下文中调用）。
+
+        Args:
+            urls: 图片 URL 列表
+
+        Returns:
+            成功下载的 ImageResult 列表
+        """
+        if not self.image_config.enabled or not PILLOW_AVAILABLE:
+            return []
+
+        # 在 executor 中并行下载（process_image_url 是同步函数）
+        loop = asyncio.get_running_loop()
+        tasks = []
+        for url in urls:
+            task = loop.run_in_executor(
+                None,
+                process_image_url,
+                url,
+                self.image_config.cache_dir,
+                self.image_config.max_download_size_bytes,
+                self.image_config.max_dimension,
+                self.image_config.cache_ttl_seconds,
+                self.image_config.download_timeout,
+            )
+            tasks.append(task)
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # 过滤失败的下载
+        images = []
+        for i, r in enumerate(results):
+            if isinstance(r, ImageResult):
+                images.append(r)
+            elif isinstance(r, Exception):
+                logger.warning(f"图片下载失败: {urls[i][:80]} — {r}")
+            # None 表示 process_image_url 内部已处理并 log 了
+
+        return images
 
     async def _send_message(
         self,
@@ -442,6 +559,17 @@ class QQBotAdapter:
             if hasattr(self.agent_loop.pipeline, 'memory'):
                 wm_len = len(self.agent_loop.pipeline.memory.working_memory)
                 status_lines.append(f"  工作记忆轮数: {wm_len}")
+
+            # 注意力追踪器状态
+            if hasattr(self.agent_loop.pipeline, 'attention_tracker'):
+                att_status = self.agent_loop.pipeline.attention_tracker.get_status()
+                status_lines.append(f"  注意力焦点用户: {att_status['focused_users']}")
+                status_lines.append(f"  上下文活跃用户: {att_status['context_users']}")
+                if att_status['cooldown_active']:
+                    status_lines.append(f"  回复冷却: 进行中")
+                elif att_status['last_reply_ago'] is not None:
+                    status_lines.append(f"  上次回复: {int(att_status['last_reply_ago'])}秒前")
+
         status_lines.append(f"  WS 连接: {'已连接' if self.ws_connection else '未连接'}")
         await self._send_reply(event, "\n".join(status_lines))
 

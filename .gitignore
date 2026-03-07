@@ -39,11 +39,13 @@ output/
 # ONNX Runtime libraries (download locally)
 Include/
 Lib/
+Library/
 # memory context data
 neuro_like_system/data/
 #dataset
 data_set/
 #test
 test/
+neuro_like_system/test_output/
 # Logs
 neuro_like_system/logs/

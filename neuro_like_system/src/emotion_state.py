@@ -47,6 +47,9 @@ class EmotionStateConfig:
     alpha: float = 0.80             # 状态惯性
     beta: float = 0.25              # AI 自身输出影响权重
     gamma: float = 0.12             # 用户情绪影响权重
+    delta: float = 0.15             # 均值回归强度（Ornstein-Uhlenbeck 回弹力）
+    baseline_valence: float = 0.15  # 人格情绪基线 valence（positive → 略正）
+    baseline_arousal: float = 0.25  # 人格情绪基线 arousal（适度活跃）
     noise_sigma: float = 0.05       # 随机噪声强度
     injection_threshold: float = 0.35  # |state| 超过此值才注入 prompt
     save_interval_turns: int = 5    # 每 N 轮保存一次到 L4
@@ -86,10 +89,13 @@ class EmotionStateTracker:
         ai_intensity: float,
     ) -> EmotionState:
         """
-        非线性状态更新，返回新状态。
+        非线性状态更新（带均值回归），返回新状态。
 
-        v_new = tanh(α * v_old + β * ai_v + γ * user_v + ε)
-        a_new = tanh(α * a_old + β * ai_a + γ * user_a + ε)
+        v_new = tanh(α·v_old + β·ai_v + γ·user_v + δ·(μ_v - v_old) + ε)
+             = tanh((α-δ)·v_old + β·ai_v + γ·user_v + δ·μ_v + ε)
+
+        δ·(μ - v_old) 项是 Ornstein-Uhlenbeck 均值回归力：
+        偏离人格基线越远，拉回的力越大。
         """
         cfg = self.config
 
@@ -101,17 +107,19 @@ class EmotionStateTracker:
         eps_v = random.gauss(0, cfg.noise_sigma)
         eps_a = random.gauss(0, cfg.noise_sigma)
 
-        # tanh 更新
+        # tanh 更新（含均值回归项）
         v_new = math.tanh(
             cfg.alpha * self.state.valence
             + cfg.beta * ai_v
             + cfg.gamma * user_v
+            + cfg.delta * (cfg.baseline_valence - self.state.valence)
             + eps_v
         )
         a_new = math.tanh(
             cfg.alpha * self.state.arousal
             + cfg.beta * ai_a
             + cfg.gamma * user_a
+            + cfg.delta * (cfg.baseline_arousal - self.state.arousal)
             + eps_a
         )
 
@@ -181,6 +189,9 @@ class EmotionStateTracker:
                 "alpha": self.config.alpha,
                 "beta": self.config.beta,
                 "gamma": self.config.gamma,
+                "delta": self.config.delta,
+                "baseline_valence": self.config.baseline_valence,
+                "baseline_arousal": self.config.baseline_arousal,
                 "noise_sigma": self.config.noise_sigma,
                 "injection_threshold": self.config.injection_threshold,
                 "save_interval_turns": self.config.save_interval_turns,
@@ -195,6 +206,9 @@ class EmotionStateTracker:
             alpha=cfg_data.get("alpha", 0.80),
             beta=cfg_data.get("beta", 0.25),
             gamma=cfg_data.get("gamma", 0.12),
+            delta=cfg_data.get("delta", 0.15),
+            baseline_valence=cfg_data.get("baseline_valence", 0.15),
+            baseline_arousal=cfg_data.get("baseline_arousal", 0.25),
             noise_sigma=cfg_data.get("noise_sigma", 0.05),
             injection_threshold=cfg_data.get("injection_threshold", 0.35),
             save_interval_turns=cfg_data.get("save_interval_turns", 5),
