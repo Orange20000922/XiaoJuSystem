@@ -20,7 +20,7 @@ SenseVoice 特点：
     neutral -> neutral
 
 用法：
-    from src.speech_recognition import SenseVoiceASR, SenseVoiceConfig
+    from src.media.speech_recognition import SenseVoiceASR, SenseVoiceConfig
 
     asr = SenseVoiceASR(config)
     asr.load()

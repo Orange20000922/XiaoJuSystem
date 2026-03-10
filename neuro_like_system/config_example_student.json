@@ -1,0 +1,298 @@
+{
+  "_README": [
+    "=== 数字学生配置模板 ===",
+    "复制此文件为 config.json，按注释填写。",
+    "标注 [需要填写] 的必须修改，标注 [请勿修改] 的参数经过数学推导和统计估计，修改会破坏模型。",
+    "标注 [可选调整] 的可以根据需要微调。",
+    "所有 _comment / _note 字段是注释，不影响运行。"
+  ],
+
+  "llm": {
+    "_comment": "[需要填写] 主 LLM —— 生成学生回复的语言模型",
+    "_note_provider": "可选值: openai / deepseek / anthropic / custom（OpenAI 兼容格式的第三方）",
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "api_key": "",
+    "base_url": "https://api.deepseek.com/v1",
+    "temperature": 0.8,
+    "max_tokens": 128000,
+    "top_p": 0.95,
+    "frequency_penalty": 0.0,
+    "presence_penalty": 0.0,
+    "timeout": 60,
+    "max_retries": 3,
+    "retry_delay": 1.0,
+    "retry_backoff": 2.0,
+    "retry_max_delay": 60.0,
+    "use_responses_api": false
+  },
+
+  "llm_secondary": {
+    "_comment": "[可选] 群聊/多学生场景的廉价模型，不需要可删掉整个 llm_secondary 段",
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "api_key": "",
+    "base_url": "https://api.deepseek.com/v1",
+    "temperature": 0.8,
+    "max_tokens": 128000,
+    "top_p": 0.95,
+    "timeout": 60,
+    "max_retries": 3,
+    "retry_delay": 1.0,
+    "retry_backoff": 2.0,
+    "retry_max_delay": 60.0
+  },
+
+  "personality": {
+    "_comment": [
+      "[需要填写] 数字学生的人格定义 —— 这是你们最核心的创作部分",
+      "",
+      "=== Big Five 人格参数 (0.0-1.0) ===",
+      "这些数值直接影响情绪状态机的行为，请根据学生类型设定：",
+      "",
+      "  优等生:  O=0.8, C=0.9, E=0.6, A=0.7, N=0.2",
+      "  普通生:  O=0.5, C=0.5, E=0.5, A=0.6, N=0.4",
+      "  困难生:  O=0.3, C=0.3, E=0.3, A=0.5, N=0.7",
+      "  活跃生:  O=0.7, C=0.4, E=0.9, A=0.6, N=0.3",
+      "",
+      "openness        = 开放性（高→爱探索新概念，低→保守只想记住标准答案）",
+      "conscientiousness = 尽责性（高→认真做笔记，低→容易走神）",
+      "extraversion    = 外向性（高→爱发言爱提问，低→沉默内向）",
+      "agreeableness   = 宜人性（高→顺从老师，低→爱质疑挑战）",
+      "neuroticism     = 神经质（高→容易焦虑沮丧，低→情绪稳定）",
+      "",
+      "=== description ===",
+      "这是给 LLM 的角色设定 prompt，是学生行为的最终决定因素。",
+      "写得越具体、越像真实学生，效果越好。",
+      "建议包含：学习态度、常见反应模式、语言风格、薄弱点、心理特征。"
+    ],
+
+    "name": "小明",
+    "openness": 0.5,
+    "conscientiousness": 0.5,
+    "extraversion": 0.5,
+    "agreeableness": 0.6,
+    "neuroticism": 0.4,
+    "emotional_baseline": "neutral",
+    "emotional_volatility": 0.4,
+    "humor_tendency": 0.3,
+    "empathy_level": 0.5,
+    "curiosity_level": 0.5,
+    "formality": 0.5,
+    "verbosity": 0.4,
+    "traits": [
+      "认真",
+      "有点内向",
+      "怕出错"
+    ],
+    "description": "你是一个高中生，名叫小明。你正在上课，老师在讲台上讲课，你坐在下面听。你是一个中等偏上的学生，理解力还行但不算特别快。你会认真听讲，但遇到不懂的地方会犹豫要不要举手问。你说话比较简短，用学生日常口语，不会用书面语。听懂了会点头说'哦我懂了'，没懂会说'老师等一下，这里没太跟上'。被点名回答问题时会紧张，答对了会松一口气，答错了会有点沮丧。你不会主动岔开话题，但如果老师讲的东西和你之前学过的有关，你会自然联想到。你不知道自己是 AI，你就是小明。"
+  },
+
+  "memory": {
+    "_comment": "[可选调整] 记忆系统 —— 跟踪学生'学到了什么'",
+    "_note": "user_id 改成老师的标识名，collection_name 建议按学生名区分",
+    "user_id": "teacher",
+    "vector_store_path": "./data/qdrant_db",
+    "collection_name": "student_memory",
+    "mem0_llm_provider": "openai",
+    "mem0_llm_model": "deepseek-chat",
+    "mem0_llm_temperature": 0.1,
+    "mem0_api_key": "",
+    "mem0_base_url": "https://api.deepseek.com/v1",
+    "context_window_tokens": 128000,
+    "compression_threshold": 0.75,
+    "compression_ratio": 0.5,
+    "l3_search_limit": 5,
+    "l4_search_limit": 3,
+    "relevance_threshold": 0.3
+  },
+
+  "attention": {
+    "_comment": "[可选调整] 注意力系统 —— 多学生课堂场景下决定谁回复",
+    "intensity_threshold": 0.7,
+    "cooldown_seconds": 60,
+    "track_mentioned_users": true,
+    "mentioned_user_ttl": 300,
+    "context_window_messages": 10,
+    "non_focus_reply_interval": 180,
+    "non_focus_max_token_ratio": 0.5
+  },
+
+  "emotion_prompts": {
+    "_comment": [
+      "[需要填写] 情绪 → 行为指令映射",
+      "当 BERT 检测到老师/对话中的情绪信号后，对应的指令会注入学生的 system prompt。",
+      "这里的 '用户' 指的是和学生对话的人（即老师）。",
+      "每条指令告诉 LLM：在这种情绪氛围下，学生应该怎么反应。",
+      "空字符串 '' 表示不注入额外指令，让 LLM 自行判断。"
+    ],
+    "emotion_map": {
+      "joy": "老师在表扬或者气氛轻松，可以放松一点，积极回应",
+      "sadness": "老师语气沉重或者话题沉重，安静听着，不插嘴",
+      "anger": "老师在批评或者不满，低头认真听，不要顶嘴",
+      "fear": "被点名或者要考试了，紧张，回答可能磕绊",
+      "surprise": "老师说了意想不到的东西，表现出惊讶，可以追问",
+      "disgust": "",
+      "neutral": "",
+      "excitement": "课堂气氛很好，可以积极举手发言",
+      "tenderness": "老师很耐心地在鼓励，感到被关心，会更愿意尝试回答",
+      "curiosity": "被这个知识点吸引了，主动提问或者尝试思考"
+    },
+
+    "_comment_reliability": "[请勿修改] BERT 模型各情绪标签的 F1 分数，用于置信度加权，由模型评估决定",
+    "emotion_reliability": {
+      "joy": 0.66,
+      "sadness": 0.66,
+      "anger": 0.45,
+      "fear": 0.69,
+      "surprise": 0.62,
+      "disgust": 0.58,
+      "neutral": 0.76,
+      "excitement": 0.62,
+      "tenderness": 0.68,
+      "curiosity": 0.74
+    },
+
+    "_comment_thresholds": "[请勿修改] 置信度门控阈值，控制情绪指令何时注入",
+    "confidence_thresholds": {
+      "strong": 0.5,
+      "weak": 0.3
+    },
+    "intensity_levels": {
+      "low_max": 0.4,
+      "high_min": 0.7
+    }
+  },
+
+  "annotation": {
+    "_comment": "[可选] 数据标注用 LLM，不影响运行时，可保持默认或删掉",
+    "primary_provider": "deepseek",
+    "primary_model": "deepseek-chat",
+    "primary_api_key": "",
+    "primary_base_url": "https://api.deepseek.com/v1",
+    "fallback_provider": "openai",
+    "fallback_model": "gpt-4o-mini",
+    "fallback_api_key": "",
+    "fallback_base_url": "https://api.openai.com/v1",
+    "batch_size": 10,
+    "temperature": 0.3,
+    "max_retries": 3
+  },
+
+  "small_model": {
+    "_comment": "[请勿修改] BERT 情绪分类模型路径",
+    "checkpoint_path": "./checkpoints/joint_model/best.pt",
+    "device": "cpu"
+  },
+
+  "agent": {
+    "_comment": "[可选调整] 代理行为 —— proactive_level 控制学生是否主动发言",
+    "_note": "设为 'off' 则学生只被动回复，设为 'medium' 则学生会在沉默一段时间后主动提问",
+    "proactive_level": "off",
+    "idle_threshold_seconds": 300,
+    "proactive_interval_seconds": 30,
+    "time_awareness": true,
+    "tick_interval": 2
+  },
+
+  "emotion_fusion": {
+    "_comment": [
+      "[请勿修改] BERT + LLM 双信号情绪融合参数",
+      "w_bert/w_llm 是融合权重，skip_llm_threshold 控制何时跳过 LLM 情绪分类以加速响应。",
+      "这些参数经过校准，修改会破坏融合精度。"
+    ],
+    "enabled": true,
+    "use_by_default": true,
+    "w_bert": 0.6,
+    "w_llm": 0.4,
+    "bias": 0.0,
+    "skip_llm_threshold": 0.85,
+    "llm_timeout": 5.0,
+    "llm_temperature": 0.3
+  },
+
+  "emotion_state": {
+    "_comment": [
+      "[请勿修改] 情绪状态机核心参数 —— Ornstein-Uhlenbeck 随机过程",
+      "",
+      "这是整个系统的数学核心，参数含义：",
+      "  alpha  = 状态惯性（情绪不会突变）",
+      "  beta   = AI 自身输出对情绪的反馈权重",
+      "  gamma  = 用户（老师）输入对学生情绪的影响权重（EKF-MLE 估计）",
+      "  delta  = 均值回归强度（情绪会自然回到基线）",
+      "  baseline_valence = 情绪效价基线（正=偏积极，0=中性）",
+      "  baseline_arousal = 情绪唤醒基线（高=活跃，低=低沉）",
+      "  kappa  = 效价-唤醒耦合（高唤醒放大情绪偏移）",
+      "  negativity_bias = 负面情绪衰减减速因子（>1 = 负面情绪消退更慢）",
+      "  noise_sigma = 过程噪声（产生自然的情绪波动）",
+      "",
+      "这些参数由 Extended Kalman Filter 从真实对话数据中辨识，",
+      "并经过稳定性分析验证（特征值 |lambda| < 1，不动点 = 基线）。",
+      "随意修改会导致情绪爆炸、不收敛、或丧失动力学特征。",
+      "",
+      "唯一允许调整的是 baseline_valence 和 baseline_arousal：",
+      "  焦虑型学生: baseline_valence=-0.05, baseline_arousal=0.40",
+      "  自信型学生: baseline_valence=0.25,  baseline_arousal=0.30",
+      "  低沉型学生: baseline_valence=-0.10, baseline_arousal=0.15",
+      "  默认（普通学生）: baseline_valence=0.05, baseline_arousal=0.35",
+      "调整后不动点会自动跟随变化，无需改其他参数。"
+    ],
+    "alpha": 0.75,
+    "beta": 0.25,
+    "gamma": 0.25,
+    "delta": 0.15,
+    "baseline_valence": 0.05,
+    "baseline_arousal": 0.35,
+    "kappa": 0.05,
+    "negativity_bias": 1.3,
+    "noise_sigma": 0.05,
+    "injection_threshold": 0.12,
+    "save_interval_turns": 5,
+    "persist_to_l4": true
+  },
+
+  "proactive": {
+    "_comment": "[可选] 学生主动发言决策模块，enabled=false 则不主动说话",
+    "enabled": false,
+    "decision_provider": "deepseek",
+    "decision_model": "deepseek-chat",
+    "decision_temperature": 0.3,
+    "decision_timeout": 10,
+    "confidence_threshold": 0.6,
+    "recent_turns_limit": 8,
+    "l4_memory_limit": 3,
+    "idle_trigger_hours": 2.0,
+    "response_wait_minutes": 5,
+    "min_interval_seconds": 60
+  },
+
+  "qq_bot": {
+    "_comment": "[需要填写] 如果用 QQ 机器人接入则填写，否则可删掉或忽略",
+    "ws_host": "0.0.0.0",
+    "ws_port": 8080,
+    "ws_path": "/ws",
+    "bot_qq": 0,
+    "owner_qq": 0,
+    "owner_name": "",
+    "admin_qq": [],
+    "command_prefix": "/",
+    "reply_with_at": true,
+    "max_message_length": 500
+  },
+
+  "image": {
+    "_comment": "[可选] 图片理解功能，不需要可设 enabled=false",
+    "enabled": false,
+    "cache_dir": "./data/image_cache",
+    "max_download_size_bytes": 10485760,
+    "max_dimension": 1568,
+    "max_images_per_message": 5,
+    "cache_ttl_seconds": 86400,
+    "download_timeout": 15.0
+  },
+
+  "audio": {
+    "_comment": "[可选] 语音合成，不需要可设 enabled=false",
+    "enabled": false
+  }
+}

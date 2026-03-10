@@ -5,7 +5,7 @@ Agent 事件循环
 用户输入只是事件队列中的一种事件，Agent 可以根据配置主动发言。
 
 用法：
-    from src.agent_loop import AgentLoop, AgentEvent
+    from src.agent.agent_loop import AgentLoop, AgentEvent
     loop = AgentLoop(pipeline, agent_config, output_callback=print, proactive_config=proactive_config)
     loop.start()
     loop.push(AgentEvent(type="message", content="你好"))
@@ -29,7 +29,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.logger import logger
-from src.inference_pipeline import ChatMode, NeuroLikePipeline
+from src.core.inference_pipeline import ChatMode, NeuroLikePipeline
 from configs.model_config import AgentConfig, ProactiveConfig, LLMConfig, LLMProvider
 
 
@@ -87,7 +87,7 @@ class AgentLoop:
 
         # 初始化主动决策模块
         if self.proactive_config.enabled:
-            from src.proactive_decision import ProactiveDecisionModule
+            from src.attention.proactive_decision import ProactiveDecisionModule
 
             # 构造 DeepSeek LLM 配置
             decision_llm_config = LLMConfig(
@@ -148,22 +148,25 @@ class AgentLoop:
         cleanup_interval = 300  # 每 5 分钟清理一次过期注意力状态
 
         while not self._stop_event.is_set():
-            event = self._poll_event()
+            try:
+                event = self._poll_event()
 
-            if event:
-                if event.type == "message":
-                    self._handle_message(event)
-                elif event.type == "system":
-                    self._handle_system_event(event)
-            else:
-                self._check_proactive_triggers()
+                if event:
+                    if event.type == "message":
+                        self._handle_message(event)
+                    elif event.type == "system":
+                        self._handle_system_event(event)
+                else:
+                    self._check_proactive_triggers()
 
-            # 定期清理过期注意力状态
-            now = time.time()
-            if now - last_cleanup_time > cleanup_interval:
-                if hasattr(self.pipeline, 'attention_tracker'):
-                    self.pipeline.attention_tracker.cleanup_expired()
-                last_cleanup_time = now
+                # 定期清理过期注意力状态
+                now = time.time()
+                if now - last_cleanup_time > cleanup_interval:
+                    if hasattr(self.pipeline, 'attention_tracker'):
+                        self.pipeline.attention_tracker.cleanup_expired()
+                    last_cleanup_time = now
+            except Exception as e:
+                logger.error(f"Agent 循环异常（已恢复）: {e}", exc_info=True)
 
     def _poll_event(self) -> Optional[AgentEvent]:
         """从队列取事件，带 timeout"""

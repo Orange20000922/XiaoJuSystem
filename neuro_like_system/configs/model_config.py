@@ -127,10 +127,8 @@ class PersonalityConfig:
 # ============== BERT 输出 → Prompt 指令映射配置 ==============
 @dataclass
 class EmotionPromptConfig:
-    """BERT 输出 → Prompt 指令映射配置"""
+    """BERT 情绪输出 → Prompt 指令映射配置"""
     emotion_map: Dict[str, str] = field(default_factory=dict)
-    behavior_map: Dict[str, str] = field(default_factory=dict)
-    tone_map: Dict[str, str] = field(default_factory=dict)
     intensity_levels: Dict[str, float] = field(
         default_factory=lambda: {"low_max": 0.4, "high_min": 0.7}
     )
@@ -549,15 +547,17 @@ DEFAULT_EMOTION_FUSION_CONFIG = EmotionFusionConfig()
 # ============== 情绪状态机配置 ==============
 @dataclass
 class EmotionStateConfig:
-    """情绪状态机配置（valence-arousal 二维连续状态）"""
-    alpha: float = 0.80             # 状态惯性
+    """情绪状态机配置（二维耦合 OU 过程 + tanh 非线性）"""
+    alpha: float = 0.75             # 状态惯性（自相关强度）
     beta: float = 0.25              # AI 自身输出影响权重
-    gamma: float = 0.12             # 用户情绪影响权重
-    delta: float = 0.15             # 均值回归强度（Ornstein-Uhlenbeck 回弹力）
-    baseline_valence: float = 0.15  # 人格情绪基线 valence（positive → 略正）
-    baseline_arousal: float = 0.25  # 人格情绪基线 arousal（适度活跃）
-    noise_sigma: float = 0.05       # 随机噪声强度
-    injection_threshold: float = 0.35  # |state| 超过此值才注入 prompt
+    gamma: float = 0.25             # 用户情绪影响权重（EKF-MLE 估计）
+    delta: float = 0.15             # 均值回归强度（OU 回弹力 θ）
+    baseline_valence: float = 0.15  # 人格情绪基线 valence
+    baseline_arousal: float = 0.28  # 人格情绪基线 arousal
+    kappa: float = 0.05             # V-A 耦合系数
+    negativity_bias: float = 1.3    # 负面情绪衰减减速因子
+    noise_sigma: float = 0.05       # 过程噪声 σ
+    injection_threshold: float = 0.12  # |state| 超过此值才注入 prompt
     save_interval_turns: int = 5    # 每 N 轮保存一次到 L4
     persist_to_l4: bool = True
 
@@ -634,4 +634,14 @@ class SenseVoiceConfig:
     use_emotion: bool = True          # 是否启用情感识别
     use_vad: bool = True              # 是否启用 VAD
     batch_size: int = 1
+
+
+# ============== 调度器配置 ==============
+@dataclass
+class SchedulerConfig:
+    """PersonaScheduler 配置"""
+    max_concurrent_llm: int = 3            # LLM 并发信号量上限
+    llm_acquire_timeout: float = 30.0      # 信号量获取超时（秒），超时后仍放行
+    health_check_interval: float = 60.0    # 健康检查间隔（秒）
+    default_persona: Optional[str] = None  # 路由 miss 时的兜底 persona 名称
 

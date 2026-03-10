@@ -34,10 +34,10 @@ from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 
 from src.logger import logger
-from src.agent_loop import AgentLoop, AgentEvent
-from src.inference_pipeline import ChatMode
+from src.agent.agent_loop import AgentLoop, AgentEvent
+from src.core.inference_pipeline import ChatMode
 from configs.model_config import QQBotConfig, ImageConfig
-from src.image_utils import process_image_url, ImageResult, PILLOW_AVAILABLE
+from src.media.image_utils import process_image_url, ImageResult, PILLOW_AVAILABLE
 
 
 # ============== CQ 码解析工具 ==============
@@ -129,6 +129,7 @@ class QQBotAdapter:
         self.config = config
         self.image_config = image_config or ImageConfig()
         self.agent_loop: Optional[AgentLoop] = None
+        self.scheduler = None  # Optional[PersonaScheduler]，运行时设置
         self.ws_connection: Optional[ServerConnection] = None
         self.async_loop: Optional[asyncio.AbstractEventLoop] = None
         self._server_task: Optional[asyncio.Task] = None
@@ -298,25 +299,30 @@ class QQBotAdapter:
             f"{f' +{len(images)}张图' if images else ''}"
         )
 
-        # 推送到 AgentLoop
-        if self.agent_loop:
-            # 构造 context_id：群聊用 group_{group_id}，私聊用 private_{user_id}
-            if msg_type == "group":
-                context_id = f"group_{group_id}"
-            else:
-                context_id = f"private_{user_id}"
+        # 推送到 AgentLoop / Scheduler
+        # 构造 context_id：群聊用 group_{group_id}，私聊用 private_{user_id}
+        if msg_type == "group":
+            context_id = f"group_{group_id}"
+        else:
+            context_id = f"private_{user_id}"
 
-            self.agent_loop.push(AgentEvent(
-                type="message",
-                content=content,
-                chat_mode=ChatMode.GROUP if msg_type == "group" else ChatMode.PRIVATE,
-                is_mentioned=mentioned,
-                reply_context=reply_target,
-                images=images,
-                user_id=user_id,
-                user_name=sender_name,
-                context_id=context_id,
-            ))
+        event = AgentEvent(
+            type="message",
+            content=content,
+            chat_mode=ChatMode.GROUP if msg_type == "group" else ChatMode.PRIVATE,
+            is_mentioned=mentioned,
+            reply_context=reply_target,
+            images=images,
+            user_id=user_id,
+            user_name=sender_name,
+            context_id=context_id,
+        )
+
+        if self.scheduler:
+            if not self.scheduler.dispatch(event):
+                logger.warning(f"无 persona 处理 context_id={context_id}")
+        elif self.agent_loop:
+            self.agent_loop.push(event)
 
     def _make_output_callback(self) -> Callable[[str], None]:
         """
@@ -354,6 +360,55 @@ class QQBotAdapter:
                 return
 
             # 长消息分条发送
+            chunks = adapter._split_message(text)
+            for chunk in chunks:
+                at_user = None
+                if target["type"] == "group" and adapter.config.reply_with_at:
+                    at_user = target["user_id"]
+
+                coro = adapter._send_message(
+                    target["type"],
+                    target.get("group_id") or target["user_id"],
+                    chunk,
+                    at_user=at_user,
+                )
+                future = asyncio.run_coroutine_threadsafe(coro, adapter.async_loop)
+                try:
+                    future.result(timeout=10)
+                except Exception as e:
+                    logger.error(f"发送消息失败: {e}")
+                    adapter.notify_owner_sync(f"[异常] 发送消息失败: {e}")
+
+        return callback
+
+    def _make_output_callback_for_loop(self, loop: AgentLoop) -> Callable[[str], None]:
+        """
+        为指定 AgentLoop 创建 output_callback（多 persona 模式使用）。
+
+        与 _make_output_callback 逻辑相同，但闭包捕获的是参数 loop
+        而非 self.agent_loop，确保每个 persona 的回复路由到正确的目标。
+        """
+        adapter = self
+
+        def callback(text: str):
+            target = (
+                loop._current_reply_context
+                if loop._current_reply_context
+                else adapter._last_reply_target
+            )
+
+            if not target:
+                if adapter.config.owner_qq:
+                    logger.info("无回复目标，系统消息发送给 owner")
+                    adapter.notify_owner_sync(text)
+                else:
+                    logger.warning("无法发送消息: 无回复目标且未配置 owner_qq")
+                return
+
+            if not adapter.ws_connection:
+                logger.warning("无法发送消息: 无 WS 连接")
+                return
+
             chunks = adapter._split_message(text)
             for chunk in chunks:
                 at_user = None
@@ -547,6 +602,32 @@ class QQBotAdapter:
         await self._send_reply(event, "\n".join(lines))
 
     async def _cmd_status(self, event: dict):
+        # 多 persona 模式：显示所有 persona 状态
+        if self.scheduler:
+            report = self.scheduler.get_health_report()
+            status_lines = [f"调度器状态 ({len(report)} 个 persona):"]
+            for name, info in report.items():
+                alive = "运行中" if info["alive"] else "已停止"
+                uptime = info["uptime_seconds"]
+                if uptime < 60:
+                    uptime_str = f"{uptime}秒"
+                else:
+                    uptime_str = f"{uptime // 60}分钟"
+                status_lines.append(
+                    f"\n  [{name}] {alive} | "
+                    f"运行: {uptime_str} | "
+                    f"队列: {info['queue_size']} | "
+                    f"主动性: {info['proactive_state']}"
+                )
+                if info["contexts"]:
+                    status_lines.append(f"    绑定: {', '.join(info['contexts'][:5])}")
+                if info["patterns"]:
+                    status_lines.append(f"    通配: {', '.join(info['patterns'])}")
+            status_lines.append(f"\nWS 连接: {'已连接' if self.ws_connection else '未连接'}")
+            await self._send_reply(event, "\n".join(status_lines))
+            return
+
+        # 单 persona 模式（向后兼容）
         status_lines = ["小橘状态:"]
         if self.agent_loop:
             state = self.agent_loop.proactive_state.value
@@ -574,6 +655,24 @@ class QQBotAdapter:
         await self._send_reply(event, "\n".join(status_lines))
 
     async def _cmd_clear(self, event: dict):
+        # 多 persona 模式
+        if self.scheduler:
+            msg_type = event.get("message_type")
+            user_id = event.get("user_id")
+            group_id = event.get("group_id")
+            if msg_type == "group":
+                ctx = f"group_{group_id}"
+            else:
+                ctx = f"private_{user_id}"
+            mp = self.scheduler.resolve_persona(ctx)
+            if mp and hasattr(mp.persona, 'memory'):
+                mp.persona.memory.working_memory.clear()
+                await self._send_reply(event, f"[{mp.name}] 对话历史已清空~")
+            else:
+                await self._send_reply(event, "没有可清空的对话历史")
+            return
+
+        # 单 persona 模式
         if self.agent_loop and hasattr(self.agent_loop.pipeline, 'memory'):
             self.agent_loop.pipeline.memory.working_memory.clear()
             await self._send_reply(event, "对话历史已清空~")
@@ -604,12 +703,15 @@ class QQBotAdapter:
             await self._send_reply(event, "日志已私聊发送~")
 
     async def _cmd_exit(self, event: dict):
-        """关闭 AgentLoop 并退出进程"""
+        """关闭调度器/AgentLoop 并退出进程"""
         user_id = event.get("user_id")
-        await self._send_reply(event, "正在关闭 AgentLoop...")
+        await self._send_reply(event, "正在关闭...")
         logger.warning(f"收到 /exit 命令 (来自 {user_id})，正在关闭")
 
-        if self.agent_loop:
+        if self.scheduler:
+            self.scheduler.stop_all()
+            logger.info("PersonaScheduler 已停止")
+        elif self.agent_loop:
             self.agent_loop.stop()
             logger.info("AgentLoop 已停止")
 

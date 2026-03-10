@@ -8,7 +8,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 from configs.model_config import (
     AgentConfig,
@@ -25,6 +25,7 @@ from configs.model_config import (
     PersonalityConfig,
     ProactiveConfig,
     QQBotConfig,
+    SchedulerConfig,
     SenseVoiceConfig,
 )
 
@@ -158,8 +159,6 @@ def load_emotion_prompt_config(cfg: dict) -> EmotionPromptConfig:
     ct = ep.get("confidence_thresholds", {})
     return EmotionPromptConfig(
         emotion_map=ep.get("emotion_map", {}),
-        behavior_map=ep.get("behavior_map", {}),
-        tone_map=ep.get("tone_map", {}),
         intensity_levels={
             "low_max": intensity.get("low_max", 0.4),
             "high_min": intensity.get("high_min", 0.7),
@@ -253,14 +252,16 @@ def load_emotion_state_config(cfg: dict) -> Optional[EmotionStateConfig]:
     if not es:
         return None
     return EmotionStateConfig(
-        alpha=es.get("alpha", 0.80),
+        alpha=es.get("alpha", 0.75),
         beta=es.get("beta", 0.25),
-        gamma=es.get("gamma", 0.12),
+        gamma=es.get("gamma", 0.25),
         delta=es.get("delta", 0.15),
         baseline_valence=es.get("baseline_valence", 0.15),
-        baseline_arousal=es.get("baseline_arousal", 0.25),
+        baseline_arousal=es.get("baseline_arousal", 0.28),
+        kappa=es.get("kappa", 0.05),
+        negativity_bias=es.get("negativity_bias", 1.3),
         noise_sigma=es.get("noise_sigma", 0.05),
-        injection_threshold=es.get("injection_threshold", 0.35),
+        injection_threshold=es.get("injection_threshold", 0.12),
         save_interval_turns=es.get("save_interval_turns", 5),
         persist_to_l4=es.get("persist_to_l4", True),
     )
@@ -452,3 +453,51 @@ class AppConfig:
             f"  context_window={self.memory.context_window_tokens}\n"
             f")"
         )
+
+
+# ============== 调度器配置加载 ==============
+
+def load_scheduler_config(path: str) -> Tuple[SchedulerConfig, List[Dict]]:
+    """
+    加载调度器配置文件。
+
+    Args:
+        path: scheduler_config.json 路径
+
+    Returns:
+        (SchedulerConfig, persona_entries)
+        persona_entries: [{"config": "config.json", "contexts": [...]}, ...]
+
+    Raises:
+        FileNotFoundError: 文件不存在
+        ValueError: 配置格式错误
+    """
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"调度器配置文件不存在: {path}")
+
+    with open(p, encoding="utf-8") as f:
+        raw = json.load(f)
+
+    sched_cfg = SchedulerConfig(
+        max_concurrent_llm=raw.get("max_concurrent_llm", 3),
+        llm_acquire_timeout=raw.get("llm_acquire_timeout", 30.0),
+        health_check_interval=raw.get("health_check_interval", 60.0),
+        default_persona=raw.get("default_persona"),
+    )
+
+    personas = raw.get("personas", [])
+    if not personas:
+        raise ValueError("scheduler_config.json 的 personas 列表不能为空")
+
+    entries = []
+    for i, item in enumerate(personas):
+        cfg_path = item.get("config")
+        if not cfg_path:
+            raise ValueError(f"personas[{i}] 缺少 'config' 字段")
+        entries.append({
+            "config": cfg_path,
+            "contexts": item.get("contexts", []),
+        })
+
+    return sched_cfg, entries

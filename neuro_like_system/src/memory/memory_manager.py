@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from configs.model_config import MemoryConfig
 
 if TYPE_CHECKING:
-    from src.inference_pipeline import ConversationTurn, LLMClient
+    from src.core.inference_pipeline import ConversationTurn, LLMClient
 
 
 # tiktoken 编码器缓存（gpt-4o 编码兼容 GPT-5.2）

@@ -104,6 +104,78 @@ effective_confidence = BERT_prob * emotion_reliability[label]
 
 每个情绪标签有独立的可靠度权重（基于验证集 F1），可在 `config.json` 的 `emotion_reliability` 中调整。
 
+### BERT + LLM 情绪融合
+
+BERT 快速分类（~10ms）与 LLM 高精度分类（~500ms）通过单神经元 softmax 融合：
+
+```
+对每个情绪 i:
+  z[i] = w_bert * bert_prob[i] * reliability[i] + w_llm * llm_conf[i] + bias
+scores = softmax(z)
+```
+
+- BERT 和 LLM **一致**时：置信度叠加，指令果断注入
+- BERT 和 LLM **分歧**时：softmax 分散概率，置信度降低，门控自动拦截错误指令
+
+默认配置下（`skip_llm_threshold=0.85`，`max(reliability)=0.76`），LLM 情绪分类每轮都被调用，确保最大准确度。可降低阈值跳过高置信 BERT 预测以减少延迟。
+
+### 情绪状态机
+
+系统维护一个 **(valence, arousal) 二维连续情绪状态**，由 Ornstein-Uhlenbeck 随机过程驱动演化，而非简单的离散标签切换。
+
+#### 数学模型
+
+二维耦合 OU 过程，Euler-Maruyama 离散化（Δt = 1 轮）：
+
+```
+φ = α - δ             (persistence, 状态记忆强度)
+θ = 1 - φ             (mean-reversion rate, 基线回归速率)
+
+v_{t+1} = tanh(φ_v·v + θ_v·μ_v + κ·(a - μ_a) + β·ai_v + γ·user_v + ε_v)
+a_{t+1} = tanh(φ·a   + θ·μ_a   + κ·(v - μ_v) + β·ai_a + γ·user_a + ε_a)
+```
+
+#### 核心特征
+
+| 特征 | 机制 | 理论基础 |
+|------|------|---------|
+| **情绪惯性** | φ=0.60 的状态记忆系数 | Kuppens et al. (2010) |
+| **均值回归** | θ·μ 拉回人格基线 | Hedonic adaptation / Set point theory |
+| **负面偏差** | v < baseline 时 θ 减小为 θ/1.3 | Baumeister et al. (2001) negativity bias |
+| **V-A 耦合** | κ·(a-μ_a) 偏差形式 | Lang (1995) 动机维度理论 |
+| **自然波动** | ε ~ N(0, 0.05²) 过程噪声 | 情绪的随机性 |
+| **有界性** | tanh 非线性 | 防止状态爆炸 |
+
+#### 不动点与稳定性
+
+零输入时不动点恰好等于人格基线 (μ_v, μ_a)。状态转移矩阵 Φ 的特征值 |λ| < 1，保证全局渐近稳定。
+
+#### 参数辨识
+
+gamma=0.25 由 **Extended Kalman Filter (EKF) 最大似然估计**从真实对话数据中辨识。其余参数为理论驱动的设计参数，配合 persona prior 正则化确保估计结果符合人格设计意图。
+
+#### 动态 Prompt Hint
+
+状态机的输出不是固定字符串，而是根据三个维度动态生成自然语言暗示：
+
+- **强度**：距基线的偏离程度（"淡淡的" / 默认 / "比较强烈"）
+- **轨迹**：Δv 方向（"正在好转" / "继续低落" / "越来越高兴"）
+- **持续性**：在同一情绪区间停留的轮次（"刚刚转变" / "持续了一段时间"）
+
+```
+第 1 轮难过: "聊了一些沉重的话题...（只是淡淡的）。刚刚情绪发生了转变"
+第 5 轮持续难过: "聊了一些沉重的话题...（情绪比较强烈），情绪还在继续低落。这种状态已经持续了一段时间"
+第 6 轮开始好转: "聊了一些沉重的话题...，不过情绪正在慢慢好转。刚刚情绪发生了转变"
+```
+
+#### LLM 参数自适应调节
+
+状态机还根据 (valence, arousal) 动态调节 LLM 生成参数：
+
+- **temperature**：arousal 驱动（高唤醒 → 更高多样性）
+- **max_tokens**：负 valence 延长回复（安慰需要更多话）
+- **top_p**：arousal 偏离基线时增大
+
 ### 双 LLM 群聊路由
 
 通过 `ChatMode` 控制 LLM 选择策略，私聊保质量、群聊省费用：
@@ -194,6 +266,7 @@ result = asr.transcribe("audio.wav")
 ```
 neuro_like_system/
 +-- config.json                # 主配置（API、人格、记忆、情绪映射、音频）
++-- config_example_student.json # 数字学生配置模板（教育智能体比赛用）
 +-- configs/
 |   +-- __init__.py
 |   +-- config_loader.py       # config.json -> AppConfig 加载器
@@ -214,7 +287,9 @@ neuro_like_system/
 |   +-- qq_adapter.py          # QQ 机器人适配层（OneBot v11 WebSocket）
 |   +-- image_utils.py         # 图片处理工具（下载/验证/缩放/base64/缓存）
 |   +-- emotion_fusion.py      # BERT + LLM 双信号情绪融合
-|   +-- emotion_state.py       # 情绪状态机（valence-arousal 二维连续状态）
+|   +-- emotion_state.py       # 情绪状态机（OU 过程, valence-arousal 二维连续状态）
+|   +-- ekf_tuner.py            # EKF 参数辨识工具（情绪状态机参数估计）
+|   +-- attention_tracker.py    # 群聊注意力追踪器
 |   +-- proactive_decision.py  # 主动决策模块
 |   +-- logger.py              # loguru 日志配置
 |   +-- content_filter.py      # 内容过滤器（敏感词清洗）
@@ -384,7 +459,7 @@ python src/inference_pipeline.py --config config.json
 - 基座：`hfl/chinese-roberta-wwm-ext` (~100M 参数)
 - 输出头：情绪分类（10 类） + 行为分类 + 语气分类 + 强度回归
 - 推理速度：~15ms/条 (GPU)
-- 当前状态：情绪头可用（68% 准确率），行为/语气头未专项训练
+- 当前状态：情绪头可用（macro-F1=0.64，接近标注数据贝叶斯上限），行为头用于记忆压缩边界检测
 
 ### 情绪标签 (10 类)
 
@@ -424,11 +499,13 @@ python src/inference_pipeline.py --config config.json
 - [x] Agent 事件循环（主动发言、时间感知）
 - [x] QQ 机器人接入（群聊注意力判断）
 - [x] 图片识别（GLM-4V 多模态）
-- [ ] CosyVoice TTS 语音合成
-- [ ] SenseVoice ASR 语音识别
+- [x] 情绪状态机（OU 过程 + EKF 参数辨识 + 动态 Prompt Hint）
+- [x] BERT + LLM 情绪融合（单神经元 softmax + reliability 加权）
+- [ ] CosyVoice TTS 语音合成集成到 AgentLoop
+- [ ] SenseVoice ASR 语音识别集成到 AgentLoop
 - [ ] Live2D 渲染 + 口型同步
-- [ ] behavior/tone 标签补全并重新训练
 - [ ] 个人博客看板娘前端
+- [ ] Pipeline 拆分（EmotionAnalyzer / PromptBuilder / LLMRouter / ResponseGenerator）
 - [ ] 本地 LLM 替代 API（Qwen2-7B 蒸馏）
 
 ## License

@@ -9,7 +9,7 @@ CosyVoice 支持两种模式：
   2. sft: 使用微调后的模型（需要训练）
 
 用法：
-    from src.audio_pipeline import AudioPipeline
+    from src.media.audio_pipeline import AudioPipeline
 
     pipeline = AudioPipeline(config)
     await pipeline.start()
