@@ -45,7 +45,7 @@ def export_annotation_model(
     """
     import sys
     from pathlib import Path
-    project_root = Path(__file__).parent.parent
+    project_root = Path(__file__).parent.parent.parent
     sys.path.insert(0, str(project_root))
     from models.annotation_model import AnnotationModel, AnnotationModelConfig
 
@@ -199,7 +199,7 @@ def export_joint_model(
     """
     import sys
     from pathlib import Path
-    project_root = Path(__file__).parent.parent
+    project_root = Path(__file__).parent.parent.parent
     sys.path.insert(0, str(project_root))
     from models.joint_model import JointEmotionBehaviorModel, create_joint_model
     from configs.model_config import JointModelConfig
@@ -419,7 +419,7 @@ def verify_onnx(onnx_path: str, checkpoint_path: str, model_type: str = "annotat
     # 加载PyTorch模型
     import sys
     from pathlib import Path
-    project_root = Path(__file__).parent.parent
+    project_root = Path(__file__).parent.parent.parent
     sys.path.insert(0, str(project_root))
 
     checkpoint = torch.load(checkpoint_path, map_location="cpu")

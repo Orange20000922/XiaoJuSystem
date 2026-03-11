@@ -1,5 +1,5 @@
 # 运行时配置（含 API key，不提交）
-neuro_like_system/config.json
+project_src/config.json
 
 # Visual Studio
 .vscode/
@@ -33,7 +33,7 @@ wandb/
 experiment_results/
 *.onnx
 # docs
-neuro_like_system/docs/
+project_src/docs/
 # Output data (crawler results)
 output/
 # ONNX Runtime libraries (download locally)
@@ -41,11 +41,13 @@ Include/
 Lib/
 Library/
 # memory context data
-neuro_like_system/data/
+project_src/data/
 #dataset
 data_set/
 #test
+project_src/test/
+project_src/test_output/
+project_src/data_test/
 test/
-neuro_like_system/test_output/
 # Logs
-neuro_like_system/logs/
+project_src/logs/

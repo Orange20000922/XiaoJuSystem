@@ -21,7 +21,7 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 import torch
 
 import sys
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.logger import logger
@@ -287,6 +287,29 @@ class PersonaInstance:
         logger.debug("路由: 群聊默认 → 副 LLM")
         return pool.secondary
 
+    # ── 图片信息提取 ──────────────────────────────────────────────────────
+
+    def _extract_image_context(self, images: list, user_input: str = "") -> str:
+        """调用 vision LLM 提取图片关键信息，返回描述文本"""
+        vision_client = self.infra.llm_pool.vision
+        if vision_client is None:
+            return ""
+
+        extraction_prompt = (
+            "请简洁描述这张图片的关键内容和特征（100字以内）。"
+            "只描述你看到的事实，不要做推测，不要回复其他内容。"
+        )
+
+        with self.infra.llm_gate():
+            description = vision_client.generate(
+                system_prompt=extraction_prompt,
+                user_input=user_input or "请描述这张图片",
+                images=images,
+                max_tokens=200,
+                temperature=0.3,
+            )
+        return description.strip()
+
     # ── max_tokens 自适应 ──────────────────────────────────────────────────
 
     def _adaptive_max_tokens(
@@ -546,6 +569,21 @@ class PersonaInstance:
             logger.debug("注意力判断：跳过回复，仅记录记忆")
 
         # ── LLM 路由 + 生成 ──────────────────────────────────────────
+
+        # ── 图片信息提取（vision → 描述 → 注入 user_input）────
+        if images and self.infra.llm_pool.vision is not None:
+            try:
+                image_context = self._extract_image_context(images, user_input)
+                if image_context:
+                    count = len(images)
+                    tag = "图片" if count == 1 else f"{count}张图片"
+                    user_input = f"[对方发送了{tag}，内容：{image_context}]\n{user_input}"
+                    logger.info(f"图片描述已提取: {image_context[:80]}...")
+            except Exception as e:
+                logger.warning(f"图片描述提取失败，回退到 vision 直出: {e}")
+            else:
+                images = None  # 提取成功，图片已消费，后续路由跳过 vision
+
         response = None
         routed_client = self._route_llm_client(
             chat_mode, emotion_behavior, is_mentioned,

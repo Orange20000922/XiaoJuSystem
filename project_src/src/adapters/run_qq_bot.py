@@ -20,8 +20,8 @@ import sys
 import traceback
 from pathlib import Path
 
-# 项目根目录 = neuro_like_system/
-project_root = Path(__file__).parent.parent
+# 项目根目录 (src/adapters/run_qq_bot.py → .parent.parent.parent)
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # 固定 CWD 到项目根，确保 config.json 中的相对路径（./data/、./checkpoints/）可用

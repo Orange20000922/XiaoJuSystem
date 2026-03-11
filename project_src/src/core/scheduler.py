@@ -35,7 +35,7 @@ from threading import Thread, Event, BoundedSemaphore
 from typing import Callable, Dict, FrozenSet, List, Optional, Set, Tuple
 
 import sys
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.logger import logger

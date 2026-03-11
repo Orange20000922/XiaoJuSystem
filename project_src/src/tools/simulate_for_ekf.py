@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
 # 项目路径
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.core.emotion_state import EmotionStateConfig, EmotionStateTracker, EmotionState
