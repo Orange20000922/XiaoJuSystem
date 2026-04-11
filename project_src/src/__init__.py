@@ -58,6 +58,19 @@ from src.media.image_utils import (
     PILLOW_AVAILABLE,
 )
 
+from src.vision.visual_perception import (
+    CV2_AVAILABLE,
+    VisualPerceptionConfig,
+    VisualPerceptionPipeline,
+    VisualEvent,
+    VisualAnalysis,
+    build_visual_analyzer_from_pipeline,
+    derive_visual_emotion_signal,
+    push_visual_event_to_agent_loop,
+    visual_event_memory_text,
+    visual_event_to_agent_event,
+)
+
 # ── LLM 客户端 re-exports ────────────────────────────────────────────────────
 from src.llm.client import LLMClient as _LLMClient  # 避免重复定义
 
@@ -100,6 +113,16 @@ __all__ = [
     "process_image_url",
     "ImageResult",
     "PILLOW_AVAILABLE",
+    "CV2_AVAILABLE",
+    "VisualPerceptionConfig",
+    "VisualPerceptionPipeline",
+    "VisualEvent",
+    "VisualAnalysis",
+    "build_visual_analyzer_from_pipeline",
+    "derive_visual_emotion_signal",
+    "push_visual_event_to_agent_loop",
+    "visual_event_memory_text",
+    "visual_event_to_agent_event",
     # Logger
     "logger",
 ]

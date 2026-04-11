@@ -21,7 +21,7 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 import torch
 
 import sys
-project_root = Path(__file__).parent.parent.parent
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.logger import logger
@@ -30,6 +30,13 @@ from src.core.prompt_builder import PromptBuilder
 from src.memory.memory_manager import HierarchicalMemoryManager
 from src.core.emotion_state import EmotionStateTracker, EmotionState
 from src.attention.attention_tracker import AttentionTracker
+from src.vision.visual_perception import (
+    VisualAnalysis,
+    VisualEvent,
+    VisualPerceptionConfig,
+    derive_visual_emotion_signal,
+    visual_event_memory_text,
+)
 from configs.model_config import (
     PersonalityConfig,
     EmotionPromptConfig,
@@ -38,6 +45,7 @@ from configs.model_config import (
     AttentionConfig,
     MemoryConfig,
     LLMProvider,
+    VisualPerceptionSettings,
 )
 
 if TYPE_CHECKING:
@@ -72,7 +80,6 @@ class PersonaInstance:
     单个人格实例 — 持有每 persona 独有的状态，
     委托共享计算给 SharedInfra。
     """
-
     def __init__(
         self,
         infra: SharedInfra,
@@ -82,6 +89,7 @@ class PersonaInstance:
         emotion_fusion_config: Optional[EmotionFusionConfig] = None,
         emotion_state_config: Optional[EmotionStateConfig] = None,
         attention_config: Optional[AttentionConfig] = None,
+        visual_perception_config: Optional[VisualPerceptionSettings] = None,
         time_awareness: bool = True,
     ):
         self.infra = infra
@@ -89,11 +97,16 @@ class PersonaInstance:
         self.emotion_prompt_config = emotion_prompt_config
         self.emotion_fusion_config = emotion_fusion_config or infra.emotion_fusion_config
         self.attention_config = attention_config or AttentionConfig()
+        self.visual_perception_config = visual_perception_config or VisualPerceptionSettings()
+        self.visual_runtime_config = VisualPerceptionConfig.from_settings(
+            self.visual_perception_config
+        )
 
-        # 人格向量（BERT 推理需要）
+        # 人格向量（BERT 推理需要，跟随 BERT 设备避免每次推理搬运）
         self.personality_vector = torch.tensor(
             personality.to_embedding_vector(),
             dtype=torch.float32,
+            device=torch.device(infra.bert.device) if infra.bert.available else None,
         )
 
         # Prompt 构建器
@@ -103,11 +116,12 @@ class PersonaInstance:
             time_awareness=time_awareness,
         )
 
-        # 记忆管理器（每 persona 独立）
+        # 记忆管理器（L1 独立，Mem0 后端全进程共享；user_id = 人格名用于记忆隔离）
         if memory_config is not None:
             self.memory = HierarchicalMemoryManager(
                 config=memory_config,
                 llm_client=infra.llm_pool.primary,
+                user_id=personality.name,
             )
         else:
             self.memory = MemoryManager()
@@ -129,7 +143,8 @@ class PersonaInstance:
         # 注意力追踪器（每 persona 独立）
         self.attention_tracker = AttentionTracker(self.attention_config)
         logger.info("注意力追踪器已启用")
-
+        # 多人格模式标记
+        self.muti_persona_mode = False
         # 后台线程池
         self._bg_executor = ThreadPoolExecutor(max_workers=1)
 
@@ -144,6 +159,7 @@ class PersonaInstance:
             emotion_fusion_config=config.emotion_fusion,
             emotion_state_config=config.emotion_state_config,
             attention_config=config.attention,
+            visual_perception_config=config.visual_perception,
             time_awareness=config.agent.time_awareness,
         )
 
@@ -164,6 +180,94 @@ class PersonaInstance:
     @property
     def small_model(self):
         return self.infra.bert.model
+
+    def handle_visual_event(self, event) -> Dict:
+        """
+        在视觉事件决定是否进入聊天链路前，先处理它的副作用。
+
+        当前副作用包括：
+        - 作为弱刺激注入情绪状态机
+        - 按阈值将压缩后的视觉观察写入 L4
+        """
+        cfg = self.visual_perception_config
+        result = {
+            "route_to_chat": bool(cfg.route_visual_events_to_chat),
+            "emotion_signal": None,
+            "memory_written": False,
+        }
+
+        visual_event = self._visual_event_from_agent_event(event)
+
+        if cfg.inject_to_emotion_state and self.emotion_state_tracker is not None:
+            signal = derive_visual_emotion_signal(
+                visual_event,
+                config=self.visual_runtime_config,
+            )
+            result["emotion_signal"] = signal
+            if abs(signal["valence_delta"]) > 1e-6 or abs(signal["arousal_delta"]) > 1e-6:
+                self.emotion_state_tracker.apply_stimulus(
+                    valence_delta=signal["valence_delta"],
+                    arousal_delta=signal["arousal_delta"],
+                )
+                logger.debug(
+                    "视觉弱刺激已注入情绪状态机: "
+                    f"dv={signal['valence_delta']:+.3f} "
+                    f"da={signal['arousal_delta']:+.3f} "
+                    f"emotion={signal['emotion']} intensity={signal['intensity']:.2f}"
+                )
+
+        if (
+            cfg.persist_to_memory
+            and isinstance(self.memory, HierarchicalMemoryManager)
+            and visual_event.peak_score >= cfg.memory_peak_score_threshold
+        ):
+            memory_text = visual_event_memory_text(visual_event).strip()
+            if memory_text:
+                self.memory.add_visual_observation(
+                    memory_text,
+                    event_id=visual_event.event_id,
+                )
+                result["memory_written"] = True
+                logger.debug(
+                    f"视觉观察已写入 L4: event={visual_event.event_id} "
+                    f"peak={visual_event.peak_score:.3f}"
+                )
+
+        return result
+
+    def _visual_event_from_agent_event(self, event) -> VisualEvent:
+        metadata = getattr(event, "metadata", {}) or {}
+        analysis_data = metadata.get("analysis") or {}
+        analysis = None
+        if analysis_data:
+            analysis = VisualAnalysis(
+                facts=list(analysis_data.get("facts", [])),
+                weak_interpretations=list(analysis_data.get("weak_interpretations", [])),
+                memory_candidate=str(analysis_data.get("memory_candidate", "")).strip(),
+                agent_hint=str(analysis_data.get("agent_hint", "")).strip(),
+                raw_text=str(analysis_data.get("raw_text", "")).strip(),
+            )
+
+        content = str(getattr(event, "content", "")).strip()
+        if content.startswith("[视觉事件]"):
+            content = content[len("[视觉事件]"):].strip()
+
+        if analysis is None and content:
+            analysis = VisualAnalysis(agent_hint=content, raw_text=content)
+
+        return VisualEvent(
+            event_id=str(metadata.get("event_id", f"visual-agent-{int(time.time())}")),
+            peak_frame_index=int(metadata.get("peak_frame_index", -1)),
+            timestamp=float(metadata.get("timestamp", getattr(event, "timestamp", time.time()))),
+            peak_score=float(metadata.get("peak_score", 0.0)),
+            representative_frame_index=int(
+                metadata.get("representative_frame_index", metadata.get("peak_frame_index", -1))
+            ),
+            keyframes=list(getattr(event, "images", []) or []),
+            metrics=dict(metadata.get("metrics", {})),
+            analysis=analysis,
+            rate_limited=bool(metadata.get("rate_limited", False)),
+        )
 
     # ── BERT + 融合 ─────────────────────────────────────────────────────────
 
@@ -656,7 +760,7 @@ class PersonaInstance:
             if chat_mode == ChatMode.GROUP and user_id is not None:
                 self.attention_tracker.on_reply(user_id)
 
-        return {
+        result = {
             "response": response,
             "emotion": emotion_behavior["emotion"],
             "behavior": emotion_behavior["behavior"],
@@ -667,6 +771,20 @@ class PersonaInstance:
                 "chat_mode": chat_mode.value,
             },
         }
+
+        if verbose:
+            es = self.emotion_state_tracker.state if self.emotion_state_tracker else None
+            result["_debug"] = {
+                "emotion_state": {
+                    "valence": es.valence,
+                    "arousal": es.arousal,
+                    "label": es.last_emotion,  # V-A 映射到的离散标签
+                } if es else None,
+                "recalled_context": recalled[:500] if recalled else "",
+                "emotion_analysis": emotion_behavior,
+            }
+
+        return result
 
     # ── 群聊被动消息 ─────────────────────────────────────────────────────
 
@@ -731,8 +849,7 @@ class PersonaInstance:
                 f"建议语气: {decision_hint.tone}"
             )
             system_prompt += hint_text
-
-        max_tokens = self.llm_client.config.max_tokens
+        max_tokens = self._adaptive_max_tokens(emotion_analysis=self.analyze_emotion_behavior(trigger), client=self.llm_client)
         try:
             with self.infra.llm_gate():
                 response = self.llm_client.generate(
@@ -781,23 +898,26 @@ class PersonaInstance:
             and self.emotion_state_tracker.config.persist_to_l4
         ):
             self._save_emotion_state()
-
+        
         if isinstance(self.memory, HierarchicalMemoryManager):
             logger.info("正在写入长期记忆...")
             self.memory.close_session()
             logger.info("长期记忆已保存。")
-
+        
             mem0 = getattr(self.memory, "mem0", None)
             if mem0:
                 for attr in ("vector_store", "_telemetry_vector_store"):
                     vs = getattr(mem0, attr, None)
                     if vs and hasattr(vs, "client"):
                         try:
+                          if not self.muti_persona_mode:
                             vs.client.close()
+                          else:
+                            pass
                         except Exception:
                             pass
-
-        self._bg_executor.shutdown(wait=False)
+        if not self.muti_persona_mode:
+            self._bg_executor.shutdown(wait=False)
 
     # ── 情绪状态持久化 ────────────────────────────────────────────────────
 

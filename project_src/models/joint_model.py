@@ -431,8 +431,8 @@ class JointEmotionBehaviorModel(nn.Module):
         attention_mask = encoding["attention_mask"].to(device)
         personality = personality.unsqueeze(0).to(device)
 
-        # 推理
-        with torch.no_grad():
+        # 推理（inference_mode 比 no_grad 更高效，禁用 autograd 版本计数）
+        with torch.inference_mode():
             output = self.forward(
                 input_ids=input_ids,
                 attention_mask=attention_mask,

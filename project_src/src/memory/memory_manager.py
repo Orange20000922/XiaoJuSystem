@@ -10,6 +10,7 @@
 import json
 import os
 import time
+import threading
 from typing import List, Dict, Optional, TYPE_CHECKING
 
 import tiktoken
@@ -20,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from configs.model_config import MemoryConfig
+from src.logger import logger
 
 if TYPE_CHECKING:
     from src.core.inference_pipeline import ConversationTurn, LLMClient
@@ -27,6 +29,12 @@ if TYPE_CHECKING:
 
 # tiktoken 编码器缓存（gpt-4o 编码兼容 GPT-5.2）
 _ENCODER = None
+
+# ── Mem0 全进程共享单例 ──────────────────────────────────────────────────────
+# Memory 实例（含 QdrantClient + SentenceTransformer）全进程只创建一次。
+# 各人格通过不同的 user_id 隔离自己的记忆，共用同一个 Qdrant collection。
+_shared_mem0: Optional[Memory] = None
+_shared_mem0_lock = threading.Lock()
 
 def _get_encoder():
     global _ENCODER
@@ -113,66 +121,72 @@ class HierarchicalMemoryManager:
         # 最近一次 BERT 分类的行为标签，由外部（Pipeline）在 add() 前设置
         self.last_behavior: str = ""
 
-        # Mem0 后端
-        # HuggingFace 模型已缓存，跳过联网检查更新
+        # Mem0 后端 ── 全进程共享单例，各人格通过 user_id 隔离记忆
+        global _shared_mem0
         os.environ["HF_HUB_OFFLINE"] = "1"
-        # Mem0 的 embedder 通过环境变量读取 OpenAI endpoint
         if config.mem0_api_key:
             os.environ["OPENAI_API_KEY"] = config.mem0_api_key
         if config.mem0_base_url and config.mem0_llm_provider == "openai":
             os.environ["OPENAI_BASE_URL"] = config.mem0_base_url
 
-        # 构建 Mem0 LLM 配置（支持 anthropic / openai-compatible 两种 provider）
-        llm_cfg: dict = {
-            "model": config.mem0_llm_model,
-            "temperature": config.mem0_llm_temperature,
-            "api_key": config.mem0_api_key,
-        }
-        if config.mem0_llm_provider == "openai" and config.mem0_base_url:
-            llm_cfg["openai_base_url"] = config.mem0_base_url
+        with _shared_mem0_lock:
+            if _shared_mem0 is None:
+                llm_cfg: dict = {
+                    "model": config.mem0_llm_model,
+                    "temperature": config.mem0_llm_temperature,
+                    "api_key": config.mem0_api_key,
+                }
+                if config.mem0_llm_provider == "openai" and config.mem0_base_url:
+                    llm_cfg["openai_base_url"] = config.mem0_base_url
 
-        mem0_cfg: Dict = {
-            "vector_store": {
-                "provider": "qdrant",
-                "config": {
-                    "collection_name": config.collection_name,
-                    "path": config.vector_store_path,
-                    "embedding_model_dims": 384,
-                    "on_disk": True,
-                },
-            },
-            "llm": {
-                "provider": config.mem0_llm_provider,
-                "config": llm_cfg,
-            },
-            "embedder": {
-                "provider": "huggingface",
-                "config": {
-                    "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                },
-            },
-        }
-        self.mem0 = Memory.from_config(mem0_cfg)
+                mem0_cfg: Dict = {
+                    "vector_store": {
+                        "provider": "qdrant",
+                        "config": {
+                            "collection_name": config.collection_name,
+                            "path": config.vector_store_path,
+                            "embedding_model_dims": 384,
+                            "on_disk": True,
+                        },
+                    },
+                    "llm": {
+                        "provider": config.mem0_llm_provider,
+                        "config": llm_cfg,
+                    },
+                    "embedder": {
+                        "provider": "huggingface",
+                        "config": {
+                            "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                        },
+                    },
+                }
+                _shared_mem0 = Memory.from_config(mem0_cfg)
+                logger.info(
+                    f"Mem0 共享实例已创建 "
+                    f"(collection={config.collection_name}, user_id={self.user_id})"
+                )
 
-        # Anthropic 专属修复：SDK 会同时发 x-api-key 和 Authorization: Bearer，
-        # 代理报 401。用 httpx event hook 剥掉 Authorization header。
-        # OpenAI-compatible provider（DeepSeek 等）不需要此 patch。
-        if (config.mem0_llm_provider == "anthropic"
-                and hasattr(self.mem0, "llm")
-                and hasattr(self.mem0.llm, "client")):
-            import anthropic, httpx
+                # Anthropic 专属修复
+                if (config.mem0_llm_provider == "anthropic"
+                        and hasattr(_shared_mem0, "llm")
+                        and hasattr(_shared_mem0.llm, "client")):
+                    import anthropic, httpx
 
-            def _strip_bearer(request: httpx.Request):
-                if "authorization" in request.headers:
-                    del request.headers["authorization"]
+                    def _strip_bearer(request: httpx.Request):
+                        if "authorization" in request.headers:
+                            del request.headers["authorization"]
 
-            self.mem0.llm.client = anthropic.Anthropic(
-                api_key=config.mem0_api_key,
-                base_url=config.mem0_base_url,
-                http_client=httpx.Client(
-                    event_hooks={"request": [_strip_bearer]}
-                ),
-            )
+                    _shared_mem0.llm.client = anthropic.Anthropic(
+                        api_key=config.mem0_api_key,
+                        base_url=config.mem0_base_url,
+                        http_client=httpx.Client(
+                            event_hooks={"request": [_strip_bearer]}
+                        ),
+                    )
+            else:
+                logger.info(f"Mem0 共享实例复用 (user_id={self.user_id})")
+
+        self.mem0 = _shared_mem0
 
     # ── L1 操作 ──────────────────────────────────────────────────────────
 
@@ -331,6 +345,13 @@ class HierarchicalMemoryManager:
             user_id=self.user_id,
         )
 
+    def add_visual_observation(self, content: str, event_id: Optional[str] = None):
+        """将筛选后的高价值视觉观察写入 L4。"""
+        prefix = "[视觉观察]"
+        if event_id:
+            prefix = f"{prefix}[{event_id}]"
+        self.add_knowledge(f"{prefix} {content}")
+
     def build_user_profile_l4(
         self,
         intensity_threshold: float = 0.6,
@@ -473,6 +494,7 @@ class HierarchicalMemoryManager:
             f_l4 = executor.submit(
                 self.mem0.search,
                 query=query,
+                user_id=self.user_id,
                 agent_id="neuro_agent",
                 limit=self.config.l4_search_limit,
             )

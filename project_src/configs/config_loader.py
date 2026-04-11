@@ -1,8 +1,8 @@
 """
-配置加载器
+配置加载器。
 
-优先级：环境变量 > config.json > 代码默认值
-敏感信息（API key）始终优先从环境变量读取，config.json 中的 key 仅作后备。
+负责从 `config.json` 读取各模块配置，并补全默认值、环境变量中的 API Key
+以及运行时需要的派生字段。
 """
 
 import json
@@ -26,11 +26,14 @@ from configs.model_config import (
     ProactiveConfig,
     QQBotConfig,
     SchedulerConfig,
+    SecurityConfig,
     SenseVoiceConfig,
+    SmallModelConfig,
+    VisualPerceptionSettings,
 )
 
 
-# config.json 默认搜索路径：项目根目录（neuro_like_system/）
+# 默认配置文件路径：`project_src/config.json`
 _DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 
 
@@ -40,12 +43,12 @@ def _find_config(path: Optional[str] = None) -> Optional[Path]:
 
 
 def _resolve_api_key(env_var: str, json_value: str) -> Optional[str]:
-    """环境变量优先，json 值作后备，均为空则返回 None"""
+    """优先从环境变量读取 API Key，回退到 JSON 中的值。"""
     return os.environ.get(env_var) or json_value or None
 
 
 def _load_llm_from_dict(llm: dict) -> LLMConfig:
-    """从一个 LLM 配置字典加载 LLMConfig（llm / llm_secondary 共用）"""
+    """将字典形式的 LLM 配置转换为 `LLMConfig`。"""
     provider_str = llm.get("provider", "custom").lower()
     provider = LLMProvider(provider_str)
 
@@ -82,7 +85,7 @@ def load_llm_config(cfg: dict) -> LLMConfig:
 
 
 def load_llm_secondary_config(cfg: dict) -> Optional[LLMConfig]:
-    """加载副 LLM 配置（群聊廉价模型），不存在则返回 None"""
+    """加载副 LLM 配置；未配置时返回 `None`。"""
     section = cfg.get("llm_secondary")
     if not section:
         return None
@@ -90,7 +93,7 @@ def load_llm_secondary_config(cfg: dict) -> Optional[LLMConfig]:
 
 
 def load_llm_vision_config(cfg: dict) -> Optional[LLMConfig]:
-    """加载图片专用 LLM 配置，不存在则返回 None"""
+    """加载视觉 LLM 配置；未配置时返回 `None`。"""
     section = cfg.get("llm_vision")
     if not section:
         return None
@@ -113,8 +116,26 @@ def load_personality_config(cfg: dict) -> PersonalityConfig:
         curiosity_level=p.get("curiosity_level", 0.9),
         formality=p.get("formality", 0.3),
         verbosity=p.get("verbosity", 0.5),
-        traits=p.get("traits", ["活泼", "好奇", "善良"]),
+        traits=p.get("traits", ["active", "curious", "kind"]),
         description=p.get("description", ""),
+    )
+
+
+def load_small_model_config(cfg: dict) -> SmallModelConfig:
+    sm = cfg.get("small_model", {})
+    return SmallModelConfig(
+        backend=sm.get("backend", "pytorch"),
+        checkpoint_path=sm.get("checkpoint_path", "./checkpoints/joint_model/best.pt"),
+        device=sm.get("device", "auto"),
+        tokenizer_path=sm.get("tokenizer_path") or None,
+        onnx_target=sm.get("onnx_target", "127.0.0.1:50051"),
+        grpc_timeout_seconds=sm.get("grpc_timeout_seconds", 30.0),
+        request_timeout_seconds=sm.get("request_timeout_seconds", 35.0),
+        max_length=sm.get("max_length", 128),
+        batching_enabled=sm.get("batching_enabled", True),
+        batch_size=sm.get("batch_size", 8),
+        batch_wait_ms=sm.get("batch_wait_ms", 4.0),
+        max_queue_size=sm.get("max_queue_size", 256),
     )
 
 
@@ -122,7 +143,7 @@ def load_memory_config(cfg: dict) -> MemoryConfig:
     m = cfg.get("memory", {})
     llm_section = cfg.get("llm", {})
     mem0_llm_provider = m.get("mem0_llm_provider", "openai").lower()
-    # API key：优先用 memory 块自己显式配置的，否则 fallback 到同 provider 的主 LLM key
+    # Mem0 的 API Key 优先读 memory 段，未配置时回退到主 LLM 的 key。
     mem0_provider_env = {
         "anthropic": "ANTHROPIC_API_KEY",
         "openai":    "OPENAI_API_KEY",
@@ -230,6 +251,7 @@ def load_agent_config(cfg: dict) -> AgentConfig:
         proactive_interval_seconds=a.get("proactive_interval_seconds", 30),
         time_awareness=a.get("time_awareness", True),
         tick_interval=a.get("tick_interval", 2.0),
+        max_concurrent_chats=a.get("max_concurrent_chats", 3),
     )
 
 
@@ -297,6 +319,49 @@ def load_image_config(cfg: dict) -> ImageConfig:
     )
 
 
+def load_visual_perception_config(cfg: dict) -> VisualPerceptionSettings:
+    vp = cfg.get("visual_perception", {})
+    return VisualPerceptionSettings(
+        enabled=vp.get("enabled", False),
+        resize_width=vp.get("resize_width", 320),
+        gaussian_kernel_size=vp.get("gaussian_kernel_size", 5),
+        mog2_history=vp.get("mog2_history", 500),
+        mog2_var_threshold=vp.get("mog2_var_threshold", 16.0),
+        mog2_detect_shadows=vp.get("mog2_detect_shadows", False),
+        morphology_kernel_size=vp.get("morphology_kernel_size", 3),
+        min_component_area_ratio=vp.get("min_component_area_ratio", 0.005),
+        temporal_vote_window=vp.get("temporal_vote_window", 3),
+        temporal_vote_required=vp.get("temporal_vote_required", 2),
+        area_weight=vp.get("area_weight", 0.5),
+        histogram_weight=vp.get("histogram_weight", 0.2),
+        edge_weight=vp.get("edge_weight", 0.3),
+        ema_alpha=vp.get("ema_alpha", 0.3),
+        peak_threshold=vp.get("peak_threshold", 0.15),
+        peak_cooldown_seconds=vp.get("peak_cooldown_seconds", 0.5),
+        event_window_seconds=vp.get("event_window_seconds", 1.0),
+        peak_neighborhood_frames=vp.get("peak_neighborhood_frames", 3),
+        max_keyframes_per_event=vp.get("max_keyframes_per_event", 3),
+        frame_queue_size=vp.get("frame_queue_size", 5),
+        observation_queue_size=vp.get("observation_queue_size", 32),
+        event_queue_size=vp.get("event_queue_size", 16),
+        vision_calls_per_minute=vp.get("vision_calls_per_minute", 2),
+        area_sigmoid_center=vp.get("area_sigmoid_center", 0.02),
+        area_sigmoid_scale=vp.get("area_sigmoid_scale", 0.01),
+        histogram_sigmoid_center=vp.get("histogram_sigmoid_center", 0.08),
+        histogram_sigmoid_scale=vp.get("histogram_sigmoid_scale", 0.04),
+        edge_sigmoid_center=vp.get("edge_sigmoid_center", 0.03),
+        edge_sigmoid_scale=vp.get("edge_sigmoid_scale", 0.015),
+        canny_threshold1=vp.get("canny_threshold1", 100),
+        canny_threshold2=vp.get("canny_threshold2", 200),
+        jpeg_quality=vp.get("jpeg_quality", 85),
+        route_visual_events_to_chat=vp.get("route_visual_events_to_chat", True),
+        inject_to_emotion_state=vp.get("inject_to_emotion_state", True),
+        persist_to_memory=vp.get("persist_to_memory", True),
+        visual_emotion_scale=vp.get("visual_emotion_scale", 0.2),
+        memory_peak_score_threshold=vp.get("memory_peak_score_threshold", 0.22),
+    )
+
+
 def load_qq_bot_config(cfg: dict) -> QQBotConfig:
     q = cfg.get("qq_bot", {})
     return QQBotConfig(
@@ -318,8 +383,9 @@ def load_audio_config(cfg: dict) -> AudioConfig:
     if not a:
         return AudioConfig(enabled=False)
 
-    # 解析 cosyvoice 子配置
     cv = a.get("cosyvoice", {})
+    edge = a.get("edge_tts", {})
+    idx = a.get("indextts2", {})
 
     return AudioConfig(
         enabled=a.get("enabled", True),
@@ -329,6 +395,24 @@ def load_audio_config(cfg: dict) -> AudioConfig:
         ref_audio_dir=cv.get("ref_audio_dir", "./data/audio_refs"),
         default_ref_audio=cv.get("default_ref_audio", "default.wav"),
         default_ref_text=cv.get("default_ref_text", ""),
+        edge_tts_voice=edge.get("voice", "zh-CN-XiaoxiaoNeural"),
+        edge_tts_rate=edge.get("rate", "+0%"),
+        edge_tts_volume=edge.get("volume", "+0%"),
+        edge_tts_pitch=edge.get("pitch", "+0Hz"),
+        edge_tts_proxy=edge.get("proxy") or None,
+        indextts2_repo_dir=idx.get("repo_dir", ""),
+        indextts2_model_dir=idx.get("model_dir", "./models/IndexTTS2"),
+        indextts2_cfg_path=idx.get("cfg_path", ""),
+        indextts2_speaker_audio=idx.get("speaker_audio", ""),
+        indextts2_emotion_audio=idx.get("emotion_audio", ""),
+        indextts2_emo_text=idx.get("emo_text", ""),
+        indextts2_emo_vector=idx.get("emo_vector", []),
+        indextts2_emo_alpha=idx.get("emo_alpha", 0.9),
+        indextts2_use_emo_text=idx.get("use_emo_text", False),
+        indextts2_use_random=idx.get("use_random", False),
+        indextts2_use_fp16=idx.get("use_fp16", False),
+        indextts2_use_cuda_kernel=idx.get("use_cuda_kernel", False),
+        indextts2_use_deepspeed=idx.get("use_deepspeed", False),
         sample_rate=cv.get("sample_rate", 22050),
         speed=cv.get("speed", 1.0),
         emotion_ref_map=a.get("emotion_ref_map", {}),
@@ -354,8 +438,32 @@ def load_sensevoice_config(cfg: dict) -> SenseVoiceConfig:
     )
 
 
+def load_security_config(cfg: dict) -> SecurityConfig:
+    s = cfg.get("security", {})
+    if not s:
+        return SecurityConfig()
+    return SecurityConfig(
+        enabled=s.get("enabled", False),
+        api_keys=s.get("api_keys", []),
+        rate_limit_per_minute=s.get("rate_limit_per_minute", 30),
+        rate_limit_per_key_per_minute=s.get("rate_limit_per_key_per_minute", 60),
+        max_concurrent_chat=s.get("max_concurrent_chat", 5),
+        max_request_body_bytes=s.get("max_request_body_bytes", 10_485_760),
+        max_messages_per_request=s.get("max_messages_per_request", 50),
+        auth_fail_ban_threshold=s.get("auth_fail_ban_threshold", 10),
+        auth_fail_ban_duration_seconds=s.get("auth_fail_ban_duration_seconds", 600),
+        ip_whitelist=s.get("ip_whitelist", []),
+        cors_enabled=s.get("cors_enabled", False),
+        cors_origins=s.get("cors_origins", ["*"]),
+        ssl_certfile=s.get("ssl_certfile"),
+        ssl_keyfile=s.get("ssl_keyfile"),
+        debug=s.get("debug", False),
+        include_debug_in_response=s.get("include_debug_in_response", False),
+    )
+
+
 class AppConfig:
-    """完整运行时配置，由 config.json 加载"""
+    """从 `config.json` 加载出的完整运行时配置。"""
 
     def __init__(
         self,
@@ -364,8 +472,7 @@ class AppConfig:
         memory: MemoryConfig,
         emotion_prompts: EmotionPromptConfig,
         annotation: AnnotationAPIConfig,
-        small_model_checkpoint: str,
-        device: str,
+        small_model: SmallModelConfig,
         attention: AttentionConfig,
         llm_secondary: Optional[LLMConfig] = None,
         llm_vision: Optional[LLMConfig] = None,
@@ -375,8 +482,10 @@ class AppConfig:
         proactive: Optional[ProactiveConfig] = None,
         qq_bot: Optional[QQBotConfig] = None,
         image: Optional[ImageConfig] = None,
+        visual_perception: Optional[VisualPerceptionSettings] = None,
         audio: Optional[AudioConfig] = None,
         sensevoice: Optional[SenseVoiceConfig] = None,
+        security: Optional[SecurityConfig] = None,
     ):
         self.llm = llm
         self.llm_secondary = llm_secondary
@@ -385,8 +494,10 @@ class AppConfig:
         self.memory = memory
         self.emotion_prompts = emotion_prompts
         self.annotation = annotation
-        self.small_model_checkpoint = small_model_checkpoint
-        self.device = device
+        self.small_model = small_model
+        # 向后兼容旧代码中的访问路径。
+        self.small_model_checkpoint = small_model.checkpoint_path
+        self.device = small_model.device
         self.attention = attention
         self.agent = agent or AgentConfig()
         self.emotion_fusion = emotion_fusion or EmotionFusionConfig()
@@ -394,31 +505,22 @@ class AppConfig:
         self.proactive = proactive or ProactiveConfig()
         self.qq_bot = qq_bot or QQBotConfig()
         self.image = image or ImageConfig()
+        self.visual_perception = visual_perception or VisualPerceptionSettings()
         self.audio = audio or AudioConfig(enabled=False)
         self.sensevoice = sensevoice or SenseVoiceConfig(enabled=False)
+        self.security = security or SecurityConfig()
 
     @classmethod
     def load(cls, path: Optional[str] = None) -> "AppConfig":
-        """
-        从 config.json 加载完整配置。
-
-        Args:
-            path: 配置文件路径，默认为项目根目录下的 config.json
-
-        Raises:
-            FileNotFoundError: config.json 不存在时
-        """
+        """从 `config.json` 加载完整运行时配置。"""
         config_path = _find_config(path)
         if config_path is None:
             raise FileNotFoundError(
-                "找不到 config.json。\n"
-                "请复制 config.example.json 为 config.json 并填写配置。"
+                "config.json not found. Copy config.example.json to config.json and fill in the required values."
             )
 
         with open(config_path, encoding="utf-8") as f:
             cfg = json.load(f)
-
-        sm = cfg.get("small_model", {})
 
         return cls(
             llm=load_llm_config(cfg),
@@ -428,11 +530,7 @@ class AppConfig:
             memory=load_memory_config(cfg),
             emotion_prompts=load_emotion_prompt_config(cfg),
             annotation=load_annotation_config(cfg),
-            small_model_checkpoint=sm.get(
-                "checkpoint_path",
-                "./checkpoints/joint_model/best_model.pt"
-            ),
-            device=sm.get("device", "cpu"),
+            small_model=load_small_model_config(cfg),
             attention=load_attention_config(cfg),
             agent=load_agent_config(cfg),
             emotion_fusion=load_emotion_fusion_config(cfg),
@@ -440,16 +538,17 @@ class AppConfig:
             proactive=load_proactive_config(cfg),
             qq_bot=load_qq_bot_config(cfg),
             image=load_image_config(cfg),
+            visual_perception=load_visual_perception_config(cfg),
             audio=load_audio_config(cfg),
             sensevoice=load_sensevoice_config(cfg),
+            security=load_security_config(cfg),
         )
-
     def __repr__(self) -> str:
         return (
             f"AppConfig(\n"
             f"  llm={self.llm.provider.value}:{self.llm.model},\n"
             f"  personality={self.personality.name},\n"
-            f"  device={self.device},\n"
+            f"  small_model={self.small_model.backend}:{self.small_model.device},\n"
             f"  context_window={self.memory.context_window_tokens}\n"
             f")"
         )
@@ -458,23 +557,10 @@ class AppConfig:
 # ============== 调度器配置加载 ==============
 
 def load_scheduler_config(path: str) -> Tuple[SchedulerConfig, List[Dict]]:
-    """
-    加载调度器配置文件。
-
-    Args:
-        path: scheduler_config.json 路径
-
-    Returns:
-        (SchedulerConfig, persona_entries)
-        persona_entries: [{"config": "config.json", "contexts": [...]}, ...]
-
-    Raises:
-        FileNotFoundError: 文件不存在
-        ValueError: 配置格式错误
-    """
+    """加载 `scheduler_config.json`，返回调度器配置和 persona 条目。"""
     p = Path(path)
     if not p.exists():
-        raise FileNotFoundError(f"调度器配置文件不存在: {path}")
+        raise FileNotFoundError(f"scheduler config file does not exist: {path}")
 
     with open(p, encoding="utf-8") as f:
         raw = json.load(f)
@@ -488,16 +574,18 @@ def load_scheduler_config(path: str) -> Tuple[SchedulerConfig, List[Dict]]:
 
     personas = raw.get("personas", [])
     if not personas:
-        raise ValueError("scheduler_config.json 的 personas 列表不能为空")
+        raise ValueError("scheduler_config.json must define a non-empty personas list")
 
     entries = []
     for i, item in enumerate(personas):
         cfg_path = item.get("config")
         if not cfg_path:
-            raise ValueError(f"personas[{i}] 缺少 'config' 字段")
-        entries.append({
-            "config": cfg_path,
-            "contexts": item.get("contexts", []),
-        })
+            raise ValueError(f"personas[{i}] is missing 'config'")
+        entries.append(
+            {
+                "config": cfg_path,
+                "contexts": item.get("contexts", []),
+            }
+        )
 
     return sched_cfg, entries

@@ -1,6 +1,7 @@
 """
-模型配置文件
-定义情绪标签、行为标签、人格特征、API配置等
+模型配置文件。
+
+定义情绪标签、行为标签、人格特征，以及各类运行时配置。
 """
 
 import os
@@ -11,7 +12,7 @@ from enum import Enum
 
 # ============== 情绪标签定义 ==============
 class EmotionType(Enum):
-    """基础情绪类型"""
+    """基础情绪类型。"""
     JOY = "joy"                    # 喜悦
     SADNESS = "sadness"            # 悲伤
     ANGER = "anger"                # 愤怒
@@ -24,7 +25,7 @@ class EmotionType(Enum):
     CURIOSITY = "curiosity"        # 好奇
 
 
-# 情绪ID映射
+# 情绪 ID 映射
 EMOTION_TO_ID = {e.value: i for i, e in enumerate(EmotionType)}
 ID_TO_EMOTION = {i: e.value for i, e in enumerate(EmotionType)}
 NUM_EMOTIONS = len(EmotionType)
@@ -32,18 +33,18 @@ NUM_EMOTIONS = len(EmotionType)
 
 # ============== 行为标签定义 ==============
 class BehaviorType(Enum):
-    """行为类型"""
-    RESPOND_POSITIVE = "respond_positive"      # 积极回应
-    RESPOND_NEGATIVE = "respond_negative"      # 消极回应
-    ASK_QUESTION = "ask_question"              # 提问
-    SHARE_EXPERIENCE = "share_experience"      # 分享经历
-    GIVE_ADVICE = "give_advice"                # 给建议
-    EXPRESS_EMPATHY = "express_empathy"        # 表达共情
-    MAKE_JOKE = "make_joke"                    # 开玩笑
-    CHANGE_TOPIC = "change_topic"              # 转移话题
-    SEEK_CLARIFICATION = "seek_clarification"  # 寻求澄清
-    AGREE = "agree"                            # 同意
-    DISAGREE = "disagree"                      # 不同意
+    """行为类型。"""
+    RESPOND_POSITIVE = "respond_positive"       # 积极回应
+    RESPOND_NEGATIVE = "respond_negative"       # 消极回应
+    ASK_QUESTION = "ask_question"               # 提问
+    SHARE_EXPERIENCE = "share_experience"       # 分享经历
+    GIVE_ADVICE = "give_advice"                 # 给出建议
+    EXPRESS_EMPATHY = "express_empathy"         # 表达共情
+    MAKE_JOKE = "make_joke"                     # 开玩笑
+    CHANGE_TOPIC = "change_topic"               # 转移话题
+    SEEK_CLARIFICATION = "seek_clarification"   # 寻求澄清
+    AGREE = "agree"                             # 同意
+    DISAGREE = "disagree"                       # 不同意
     NEUTRAL_ACKNOWLEDGE = "neutral_acknowledge" # 中性确认
 
 
@@ -54,7 +55,7 @@ NUM_BEHAVIORS = len(BehaviorType)
 
 # ============== 语气标签定义 ==============
 class ToneType(Enum):
-    """语气类型"""
+    """语气类型。"""
     ENTHUSIASTIC = "enthusiastic"  # 热情
     CALM = "calm"                  # 平静
     PLAYFUL = "playful"            # 俏皮
@@ -73,10 +74,10 @@ NUM_TONES = len(ToneType)
 # ============== 人格配置 ==============
 @dataclass
 class PersonalityConfig:
-    """人格配置"""
+    """人格配置。"""
     name: str = "Neuro"
 
-    # 基础特质 (Big Five)
+    # Big Five 基础特质
     openness: float = 0.8           # 开放性
     conscientiousness: float = 0.5  # 尽责性
     extraversion: float = 0.7       # 外向性
@@ -93,18 +94,18 @@ class PersonalityConfig:
     curiosity_level: float = 0.9    # 好奇心
 
     # 语言风格
-    formality: float = 0.3          # 正式程度 (0=casual, 1=formal)
+    formality: float = 0.3          # 正式程度（0=casual, 1=formal）
     verbosity: float = 0.5          # 话多程度
 
-    # 特殊标签
+    # 标签式人格描述
     traits: List[str] = field(default_factory=lambda: ["活泼", "好奇", "善良"])
 
-    # 自由文本人格描述（直接注入 prompt，优先级高于数值字段）
-    # 填写后将替代数值参数作为人格描述，支持详细的行为规范、语言习惯、负向约束等
+    # 自由文本人格描述。填写后可直接注入 prompt，
+    # 优先级高于数值型人格字段，适合承载更细的行为规范和说话习惯。
     description: str = ""
 
     def to_embedding_vector(self) -> List[float]:
-        """转换为嵌入向量"""
+        """转换为人格嵌入向量。"""
         return [
             self.openness,
             self.conscientiousness,
@@ -124,27 +125,48 @@ class PersonalityConfig:
         return len(self.to_embedding_vector())
 
 
-# ============== BERT 输出 → Prompt 指令映射配置 ==============
+# ============== BERT 输出到 Prompt 的映射配置 ==============
 @dataclass
 class EmotionPromptConfig:
-    """BERT 情绪输出 → Prompt 指令映射配置"""
+    """BERT 输出到 Prompt 提示的映射配置。"""
     emotion_map: Dict[str, str] = field(default_factory=dict)
     intensity_levels: Dict[str, float] = field(
         default_factory=lambda: {"low_max": 0.4, "high_min": 0.7}
     )
-    # 每个情绪标签的 BERT 可靠度（F1），用于加权置信度
+    # 各情绪标签的可靠度，可用验证集 F1 估计。
     emotion_reliability: Dict[str, float] = field(default_factory=dict)
     # effective_confidence = BERT_prob * reliability
-    # > strong → 注入确定性指令; > weak → 注入不确定指令; 否则跳过
+    # > strong: 注入确定性提示
+    # > weak:   注入不确定提示
+    # 其余情况跳过，交给 LLM 自行判断。
     confidence_thresholds: Dict[str, float] = field(
-        default_factory=lambda: {"strong": 0.5, "weak": 0.3}
+        default_factory=lambda: {"strong": 0.2, "weak": 0.15}
     )
+
+
+# ============== 小模型运行时配置 ==============
+@dataclass
+class SmallModelConfig:
+    """小模型推理后端配置。"""
+
+    backend: str = "pytorch"              # "pytorch" | "onnx_grpc"
+    checkpoint_path: str = "./checkpoints/joint_model/best.pt"
+    device: str = "auto"                  # PyTorch 后端使用；ONNX gRPC 后端固定由 Python 侧发起请求
+    tokenizer_path: Optional[str] = None  # ONNX gRPC 后端 tokenizer 路径，为空时自动推断
+    onnx_target: str = "127.0.0.1:50051"  # C++ ONNX gRPC 服务地址
+    grpc_timeout_seconds: float = 30.0
+    request_timeout_seconds: float = 35.0
+    max_length: int = 128
+    batching_enabled: bool = True
+    batch_size: int = 8
+    batch_wait_ms: float = 4.0
+    max_queue_size: int = 256
 
 
 # ============== 模型配置 ==============
 @dataclass
 class EmotionModelConfig:
-    """情绪识别模型配置"""
+    """情绪识别模型配置。"""
     # 基座模型
     pretrained_model: str = "hfl/chinese-roberta-wwm-ext"
 
@@ -153,7 +175,7 @@ class EmotionModelConfig:
     num_emotions: int = NUM_EMOTIONS
     dropout: float = 0.1
 
-    # 人格融合
+    # 人格特征融合
     personality_dim: int = 11  # PersonalityConfig.embedding_dim
     use_personality: bool = True
 
@@ -167,8 +189,8 @@ class EmotionModelConfig:
 
 @dataclass
 class BehaviorModelConfig:
-    """行为生成模型配置"""
-    # 基座模型 (Encoder-Decoder)
+    """行为生成模型配置。"""
+    # 基座模型（Encoder-Decoder）
     pretrained_model: str = "uer/t5-base-chinese-cluecorpussmall"
 
     # 模型结构
@@ -192,7 +214,7 @@ class BehaviorModelConfig:
 
 @dataclass
 class JointModelConfig:
-    """联合模型配置 (情绪+行为一体)"""
+    """联合模型配置（情绪 + 行为）。"""
     # 基座模型
     pretrained_model: str = "hfl/chinese-roberta-wwm-ext"
 
@@ -204,38 +226,39 @@ class JointModelConfig:
     num_tones: int = NUM_TONES
     dropout: float = 0.1
 
-    # 人格融合
+    # 人格特征融合
     personality_dim: int = 11
     use_personality: bool = True
 
     # 训练参数
     max_length: int = 128
-    batch_size: int = 16              # 8GB显存建议16
+    batch_size: int = 16              # 8GB 显存建议 16
     learning_rate: float = 2e-5
     num_epochs: int = 10
     warmup_ratio: float = 0.1
-    gradient_accumulation_steps: int = 2  # 梯度累积，等效batch=32
-    fp16: bool = True                 # 混合精度训练，省显存
+    gradient_accumulation_steps: int = 2  # 梯度累积，等效 batch=32
+    fp16: bool = True                 # 混合精度训练，节省显存
 
-    # 多任务权重
+    # 多任务损失权重
     emotion_loss_weight: float = 1.0
     behavior_loss_weight: float = 1.0
     tone_loss_weight: float = 0.5
     intensity_loss_weight: float = 0.5
 
 
-# ============== 8GB显存优化配置 ==============
+# ============== 8GB 显存优化配置 ==============
 @dataclass
 class JointModelConfigLowVRAM(JointModelConfig):
-    """8GB显存优化配置"""
+    """8GB 显存优化配置。"""
     batch_size: int = 8
-    gradient_accumulation_steps: int = 4  # 等效batch=32
-    max_length: int = 96              # 稍微缩短，省显存
+    gradient_accumulation_steps: int = 4  # 等效 batch=32
+    max_length: int = 96              # 适度缩短序列，节省显存
     fp16: bool = True
 
 
 # ============== 默认配置实例 ==============
 DEFAULT_PERSONALITY = PersonalityConfig()
+DEFAULT_SMALL_MODEL_CONFIG = SmallModelConfig()
 DEFAULT_EMOTION_CONFIG = EmotionModelConfig()
 DEFAULT_BEHAVIOR_CONFIG = BehaviorModelConfig()
 DEFAULT_JOINT_CONFIG = JointModelConfig()
@@ -244,20 +267,20 @@ DEFAULT_JOINT_CONFIG_LOW_VRAM = JointModelConfigLowVRAM()
 
 # ============== LLM API 配置 ==============
 class LLMProvider(Enum):
-    """支持的LLM提供商"""
+    """支持的 LLM 提供商。"""
     OPENAI = "openai"
     DEEPSEEK = "deepseek"
     ANTHROPIC = "anthropic"
-    CUSTOM = "custom"  # 自定义API（兼容OpenAI格式）
+    CUSTOM = "custom"  # 自定义 API（兼容 OpenAI 格式）
 
 
 @dataclass
 class LLMConfig:
-    """大模型API配置"""
+    """大模型 API 配置。"""
     # 提供商
     provider: LLMProvider = LLMProvider.OPENAI
 
-    # API密钥（优先从环境变量读取）
+    # API 密钥，优先从环境变量读取
     api_key: Optional[str] = None
 
     # API Base URL
@@ -282,11 +305,11 @@ class LLMConfig:
     retry_backoff: float = 2.0      # 指数退避乘数
     retry_max_delay: float = 60.0   # 单次等待上限（秒）
 
-    # 使用 OpenAI Responses API（/v1/responses）而非 Chat Completions API
+    # 是否使用 OpenAI Responses API（/v1/responses）
     use_responses_api: bool = False
 
     def __post_init__(self):
-        """初始化后处理：从环境变量读取密钥"""
+        """初始化后处理：从环境变量补全密钥。"""
         if self.api_key is None:
             env_key_map = {
                 LLMProvider.OPENAI: "OPENAI_API_KEY",
@@ -297,23 +320,23 @@ class LLMConfig:
             env_key = env_key_map.get(self.provider, "OPENAI_API_KEY")
             self.api_key = os.environ.get(env_key)
 
-        # 设置默认base_url
+        # 补全默认 base_url
         if self.base_url is None:
             self.base_url = self._get_default_base_url()
 
     def _get_default_base_url(self) -> Optional[str]:
-        """获取默认的API Base URL"""
+        """获取默认 API Base URL。"""
         url_map = {
             LLMProvider.OPENAI: "https://api.openai.com/v1",
             LLMProvider.DEEPSEEK: "https://api.deepseek.com/v1",
-            LLMProvider.ANTHROPIC: None,  # Anthropic SDK自带
+            LLMProvider.ANTHROPIC: None,  # Anthropic SDK 自带
             LLMProvider.CUSTOM: None,
         }
         return url_map.get(self.provider)
 
     @classmethod
     def from_env(cls, provider: str = "openai") -> "LLMConfig":
-        """从环境变量创建配置"""
+        """从环境变量创建配置。"""
         provider_enum = LLMProvider(provider.lower())
         return cls(provider=provider_enum)
 
@@ -324,7 +347,7 @@ class LLMConfig:
         model: str = "gpt-5.2-instant",
         base_url: Optional[str] = None
     ) -> "LLMConfig":
-        """创建OpenAI配置"""
+        """创建 OpenAI 配置。"""
         return cls(
             provider=LLMProvider.OPENAI,
             api_key=api_key,
@@ -338,7 +361,7 @@ class LLMConfig:
         api_key: Optional[str] = None,
         model: str = "deepseek-chat"
     ) -> "LLMConfig":
-        """创建DeepSeek配置"""
+        """创建 DeepSeek 配置。"""
         return cls(
             provider=LLMProvider.DEEPSEEK,
             api_key=api_key,
@@ -352,7 +375,7 @@ class LLMConfig:
         api_key: Optional[str] = None,
         model: str = "claude-3-5-haiku-20241022"
     ) -> "LLMConfig":
-        """创建Anthropic配置"""
+        """创建 Anthropic 配置。"""
         return cls(
             provider=LLMProvider.ANTHROPIC,
             api_key=api_key,
@@ -367,7 +390,7 @@ class LLMConfig:
         api_key: Optional[str] = None,
         model: str = "gpt-5.2-instant"
     ) -> "LLMConfig":
-        """创建自定义API配置（兼容OpenAI格式）"""
+        """创建自定义 API 配置（兼容 OpenAI 格式）。"""
         return cls(
             provider=LLMProvider.CUSTOM,
             api_key=api_key,
@@ -379,47 +402,48 @@ class LLMConfig:
 # ============== 注意力系统配置 ==============
 @dataclass
 class AttentionConfig:
-    """注意力系统配置"""
-    intensity_threshold: float = 0.7      # 情绪强度阈值（触发回复）
-    cooldown_seconds: int = 60            # 回复冷却时间（避免刷屏）
+    """注意力系统配置。"""
+    intensity_threshold: float = 0.7      # 情绪强度阈值，超过时更倾向回复
+    cooldown_seconds: int = 60            # 回复冷却时间，避免刷屏
     track_mentioned_users: bool = True    # 是否追踪被 @ 过的用户
-    mentioned_user_ttl: int = 300         # @ 用户的注意力保持时间（秒）
-    context_window_messages: int = 10     # 上下文窗口：最近 N 条消息内的用户视为活跃
+    mentioned_user_ttl: int = 300         # 被 @ 用户的注意力保持时间（秒）
+    context_window_messages: int = 10     # 最近 N 条消息内的用户视为仍在上下文中
 
-    # 非焦点回复控制（群聊中未 @ 且不在焦点内的用户）
-    non_focus_reply_interval: int = 180   # 非焦点回复最小间隔（秒），0 表示不限制
-    non_focus_max_token_ratio: float = 0.5  # 非焦点回复的 max_tokens 权重（相对于焦点内）
+    # 非焦点回复控制（群聊中未被 @ 且不在焦点内的用户）
+    non_focus_reply_interval: int = 180   # 非焦点回复最小间隔（秒）
+    non_focus_max_token_ratio: float = 0.5  # 非焦点回复的 max_tokens 比例
 
 
 # ============== Agent 事件循环配置 ==============
 @dataclass
 class AgentConfig:
-    """Agent 事件循环配置"""
+    """Agent 事件循环配置。"""
     proactive_level: str = "off"          # "off" | "low" | "medium"
     idle_threshold_seconds: int = 300
     proactive_interval_seconds: int = 30
     time_awareness: bool = True
     tick_interval: float = 2.0
+    max_concurrent_chats: int = 3         # 每个 persona 最大并发聊天数
 
 
 # ============== 主动决策模块配置 ==============
 @dataclass
 class ProactiveConfig:
-    """主动决策模块配置"""
+    """主动决策模块配置。"""
     enabled: bool = True
 
-    # 判断层 LLM（DeepSeek）
+    # 决策层 LLM
     decision_provider: str = "deepseek"
     decision_model: str = "deepseek-chat"
     decision_temperature: float = 0.3
     decision_timeout: float = 5.0
 
     # 决策阈值
-    confidence_threshold: float = 0.6  # should_respond 置信度阈值
+    confidence_threshold: float = 0.6  # should_respond 的置信度阈值
 
     # 上下文窗口
     recent_turns_limit: int = 8        # 从 L1 取最近 N 轮
-    l4_memory_limit: int = 3           # 从 L4 取 N 条情感记忆
+    l4_memory_limit: int = 3           # 从 L4 取 N 条情绪相关记忆
 
     # 时间驱动触发
     idle_trigger_hours: float = 2.0    # 空闲 N 小时后触发主动决策
@@ -429,11 +453,11 @@ class ProactiveConfig:
     min_interval_seconds: int = 30
 
 
-# ============== 预设LLM配置 ==============
+# ============== 预设 LLM 配置 ==============
 # GPT-5 系列
 DEFAULT_LLM_CONFIG = LLMConfig.openai(model="gpt-5")
 
-# GPT-5.2 系列(默认)
+# GPT-5.2 系列（默认）
 GPT5_INSTANT_CONFIG = LLMConfig.openai(model="gpt-5.2-instant")
 GPT5_THINKING_CONFIG = LLMConfig.openai(model="gpt-5.2-thinking")
 
@@ -446,17 +470,17 @@ CLAUDE_HAIKU_CONFIG = LLMConfig.anthropic(model="claude-3-5-haiku-20241022")
 DEEPSEEK_CONFIG = LLMConfig.deepseek()
 
 
-# ============== 数据标注API配置 ==============
+# ============== 数据标注 API 配置 ==============
 @dataclass
 class AnnotationAPIConfig:
-    """数据标注API配置"""
-    # 主要标注模型
+    """数据标注 API 配置。"""
+    # 主标注模型
     primary_provider: LLMProvider = LLMProvider.OPENAI
     primary_model: str = "gpt-5.2-instant"
     primary_api_key: Optional[str] = None
     primary_base_url: Optional[str] = None
 
-    # 备用标注模型（用于对比或降级）
+    # 备用标注模型
     fallback_provider: LLMProvider = LLMProvider.DEEPSEEK
     fallback_model: str = "deepseek-chat"
     fallback_api_key: Optional[str] = None
@@ -464,11 +488,11 @@ class AnnotationAPIConfig:
 
     # 标注参数
     batch_size: int = 10
-    temperature: float = 0.3  # 标注用低温度，提高一致性
+    temperature: float = 0.3  # 标注任务使用低温度，提高一致性
     max_retries: int = 3
 
     def __post_init__(self):
-        """从环境变量读取密钥"""
+        """从环境变量读取密钥。"""
         if self.primary_api_key is None:
             self.primary_api_key = os.environ.get("OPENAI_API_KEY")
         if self.fallback_api_key is None:
@@ -485,29 +509,29 @@ DEFAULT_ANNOTATION_CONFIG = AnnotationAPIConfig()
 # ============== 分级记忆系统配置 ==============
 @dataclass
 class MemoryConfig:
-    """Token 计数导向的分级记忆系统配置"""
+    """基于 token 计数的分级记忆系统配置。"""
 
-    # 用户身份标识（用于 Mem0 user_id，区分不同用户的记忆）
+    # 用户身份标识，用于 Mem0 user_id
     user_id: str = "owner"
 
     # Mem0 向量存储
     vector_store_path: str = "./data/qdrant_db"
     collection_name: str = "neuro_memory"
 
-    # Mem0 内部 LLM（压缩摘要/事实抽取用，复用对话 LLM 的 key/endpoint）
-    mem0_llm_provider: str = "openai"   # "anthropic" | "openai"（openai 兼容所有 OAI-compatible 接口）
+    # Mem0 内部使用的 LLM，用于压缩摘要和事实抽取
+    mem0_llm_provider: str = "openai"   # "anthropic" | "openai"
     mem0_llm_model: str = "gpt-5.2-instant"
     mem0_llm_temperature: float = 0.1
     mem0_api_key: Optional[str] = None
     mem0_base_url: Optional[str] = None     # 第三方供应商 endpoint
 
-    # LLM 上下文窗口大小（按实际使用的模型填写）
+    # LLM 上下文窗口大小，按实际使用模型填写
     context_window_tokens: int = 128_000    # GPT-5.2 Instant: 128K
 
-    # L1 压缩触发阈值（占上下文窗口比例），达到后将最旧部分压缩到 L2
+    # L1 压缩触发阈值，占上下文窗口比例
     compression_threshold: float = 0.75
 
-    # 每次压缩 L1 最旧的比例
+    # 每次压缩 L1 最旧部分的比例
     compression_ratio: float = 0.5
 
     # Mem0 检索参数
@@ -530,9 +554,9 @@ DEFAULT_MEMORY_CONFIG = MemoryConfig()
 # ============== 情绪融合配置 ==============
 @dataclass
 class EmotionFusionConfig:
-    """BERT + LLM 双信号情绪融合配置"""
+    """BERT + LLM 双信号情绪融合配置。"""
     enabled: bool = True
-    use_by_default: bool = True  # 默认是否启用融合（全局开关）
+    use_by_default: bool = True  # 全局默认是否启用融合
     w_bert: float = 0.6
     w_llm: float = 0.4
     bias: float = 0.0
@@ -547,17 +571,17 @@ DEFAULT_EMOTION_FUSION_CONFIG = EmotionFusionConfig()
 # ============== 情绪状态机配置 ==============
 @dataclass
 class EmotionStateConfig:
-    """情绪状态机配置（二维耦合 OU 过程 + tanh 非线性）"""
-    alpha: float = 0.75             # 状态惯性（自相关强度）
-    beta: float = 0.25              # AI 自身输出影响权重
+    """情绪状态机配置（二位耦合 OU 过程 + tanh 非线性）。"""
+    alpha: float = 0.75             # 状态惯性
+    beta: float = 0.25              # AI 输出影响权重
     gamma: float = 0.25             # 用户情绪影响权重（EKF-MLE 估计）
-    delta: float = 0.15             # 均值回归强度（OU 回弹力 θ）
-    baseline_valence: float = 0.15  # 人格情绪基线 valence
-    baseline_arousal: float = 0.28  # 人格情绪基线 arousal
+    delta: float = 0.15             # 均值回归强度
+    baseline_valence: float = 0.15  # 人格基线 valence
+    baseline_arousal: float = 0.28  # 人格基线 arousal
     kappa: float = 0.05             # V-A 耦合系数
     negativity_bias: float = 1.3    # 负面情绪衰减减速因子
-    noise_sigma: float = 0.05       # 过程噪声 σ
-    injection_threshold: float = 0.12  # |state| 超过此值才注入 prompt
+    noise_sigma: float = 0.05       # 过程噪声
+    injection_threshold: float = 0.12  # 超过该阈值才注入 prompt
     save_interval_turns: int = 5    # 每 N 轮保存一次到 L4
     persist_to_l4: bool = True
 
@@ -568,7 +592,7 @@ DEFAULT_EMOTION_STATE_CONFIG = EmotionStateConfig()
 # ============== 图片识别配置 ==============
 @dataclass
 class ImageConfig:
-    """图片识别配置"""
+    """图片识别配置。"""
     enabled: bool = True
     cache_dir: str = "./data/image_cache"
     max_download_size_bytes: int = 10_485_760  # 10MB
@@ -578,21 +602,63 @@ class ImageConfig:
     download_timeout: float = 15.0
 
 
+@dataclass
+class VisualPerceptionSettings:
+    """动态视觉感知配置。"""
+    enabled: bool = False
+    resize_width: int = 320
+    gaussian_kernel_size: int = 5
+    mog2_history: int = 500
+    mog2_var_threshold: float = 16.0
+    mog2_detect_shadows: bool = False
+    morphology_kernel_size: int = 3
+    min_component_area_ratio: float = 0.005
+    temporal_vote_window: int = 3
+    temporal_vote_required: int = 2
+    area_weight: float = 0.5
+    histogram_weight: float = 0.2
+    edge_weight: float = 0.3
+    ema_alpha: float = 0.3
+    peak_threshold: float = 0.15
+    peak_cooldown_seconds: float = 0.5
+    event_window_seconds: float = 1.0
+    peak_neighborhood_frames: int = 3
+    max_keyframes_per_event: int = 3
+    frame_queue_size: int = 5
+    observation_queue_size: int = 32
+    event_queue_size: int = 16
+    vision_calls_per_minute: int = 2
+    area_sigmoid_center: float = 0.02
+    area_sigmoid_scale: float = 0.01
+    histogram_sigmoid_center: float = 0.08
+    histogram_sigmoid_scale: float = 0.04
+    edge_sigmoid_center: float = 0.03
+    edge_sigmoid_scale: float = 0.015
+    canny_threshold1: int = 100
+    canny_threshold2: int = 200
+    jpeg_quality: int = 85
+    route_visual_events_to_chat: bool = True
+    inject_to_emotion_state: bool = True
+    persist_to_memory: bool = True
+    visual_emotion_scale: float = 0.2         # 视觉弱刺激注入情绪状态机时的缩放系数
+    memory_peak_score_threshold: float = 0.22 # 写入长期记忆的最低峰值分数
+
+
 
 # ============== QQ 机器人配置 ==============
 @dataclass
 class QQBotConfig:
-    """QQ 机器人适配层配置"""
+    """QQ 机器人适配层配置。"""
     ws_host: str = "0.0.0.0"         # WebSocket 监听地址
     ws_port: int = 8080              # WebSocket 监听端口
-    ws_path: str = "/xm"             # WebSocket 路径（与 NapCat 配置一致）
-    bot_qq: int = 0                  # 机器人 QQ 号（用于检测 @）
-    owner_qq: int = 0                # 机器人主人 QQ 号（始终拥有管理权限）
-    owner_name: str = ""             # 主人在对话中的称呼（留空则用 QQ 昵称）
-    admin_qq: List[int] = field(default_factory=list)  # 其他管理员 QQ 号列表
+    ws_path: str = "/xm"             # WebSocket 路径，需与 NapCat 配置一致
+    bot_qq: int = 0                  # 机器人 QQ 号，用于检测 @
+    owner_qq: int = 0                # 主人 QQ 号，始终拥有管理权限
+    owner_name: str = ""             # 对话中的主人称呼，留空则用 QQ 昵称
+    admin_qq: List[int] = field(default_factory=list)  # 其他管理员 QQ 列表
     command_prefix: str = "/"        # 命令前缀
     reply_with_at: bool = True       # 群聊回复时是否 @ 对方
-    max_message_length: int = 500    # 单条消息最大长度，超过则分条发送
+    max_message_length: int = 500    # 单条消息最大长度，超出则分条发送
 
 
 # ============== TTS 音频配置 ==============
@@ -600,35 +666,55 @@ class QQBotConfig:
 class AudioConfig:
     """TTS 语音合成配置"""
     enabled: bool = True
-    tts_provider: str = "cosyvoice"   # "cosyvoice" | "edge-tts"
+    tts_provider: str = "cosyvoice"   # "cosyvoice" | "edge-tts" | "indextts2"
 
-    # CosyVoice 源码仓库路径（源码包，需要手动指定）
-    cosyvoice_repo_dir: str = "D:\\Users\\21405\\source\\repos\\MyNeuroLikeSystem\\CosyVoice2\\CosyVoice"              # 例: "D:/repos/CosyVoice"
+    # CosyVoice
+    cosyvoice_repo_dir: str = "D:\\Users\\21405\\source\\repos\\MyNeuroLikeSystem\\CosyVoice2\\CosyVoice"
     cosyvoice_model_dir: str = "./models/CosyVoice2-0.5B"
     ref_audio_dir: str = "./data/audio_refs"
     default_ref_audio: str = "test2.wav"
     default_ref_text: str = ""
+
+    # edge-tts
+    edge_tts_voice: str = "zh-CN-XiaoxiaoNeural"
+    edge_tts_rate: str = "+0%"
+    edge_tts_volume: str = "+0%"
+    edge_tts_pitch: str = "+0Hz"
+    edge_tts_proxy: Optional[str] = None
+
+    # IndexTTS2
+    indextts2_repo_dir: str = ""
+    indextts2_model_dir: str = "./models/IndexTTS2"
+    indextts2_cfg_path: str = ""
+    indextts2_speaker_audio: str = ""
+    indextts2_emotion_audio: str = ""
+    indextts2_emo_text: str = ""
+    indextts2_emo_vector: List[float] = field(default_factory=list)
+    indextts2_emo_alpha: float = 0.9
+    indextts2_use_emo_text: bool = False
+    indextts2_use_random: bool = False
+    indextts2_use_fp16: bool = False
+    indextts2_use_cuda_kernel: bool = False
+    indextts2_use_deepspeed: bool = False
+
     sample_rate: int = 22050
     speed: float = 1.0
 
-    # 情绪 -> 参考音频映射
+    # 情绪 -> 参考提示映射。对 CosyVoice 使用 audio/text；对 IndexTTS2 可复用为 emotion audio/text prompt。
     emotion_ref_map: Dict[str, Dict[str, str]] = field(default_factory=dict)
 
-    # 音频缓存
     cache_dir: str = "./data/audio_cache"
     cache_enabled: bool = True
-
-    # 播放
     auto_play: bool = False
 
 
 # ============== ASR 语音识别配置 ==============
 @dataclass
 class SenseVoiceConfig:
-    """SenseVoice 语音识别配置"""
+    """SenseVoice 语音识别配置。"""
     enabled: bool = True
     model_id: str = "FunAudioLLM/SenseVoiceSmall"
-    model_dir: Optional[str] = None   # 本地模型路径（优先于 model_id）
+    model_dir: Optional[str] = None   # 本地模型路径，优先于 model_id
     device: str = "cuda"              # "cuda" | "cpu"
     language: str = "auto"            # "zh" | "en" | "auto"
     use_emotion: bool = True          # 是否启用情感识别
@@ -639,9 +725,42 @@ class SenseVoiceConfig:
 # ============== 调度器配置 ==============
 @dataclass
 class SchedulerConfig:
-    """PersonaScheduler 配置"""
+    """PersonaScheduler 配置。"""
     max_concurrent_llm: int = 3            # LLM 并发信号量上限
-    llm_acquire_timeout: float = 30.0      # 信号量获取超时（秒），超时后仍放行
+    llm_acquire_timeout: float = 30.0      # 信号量获取超时（秒）
     health_check_interval: float = 60.0    # 健康检查间隔（秒）
     default_persona: Optional[str] = None  # 路由 miss 时的兜底 persona 名称
+
+
+# ============== API 安全配置 ==============
+@dataclass
+class SecurityConfig:
+    """API 服务安全配置，涵盖认证、限流、封禁、体积限制和 HTTPS。"""
+    enabled: bool = False                      # 认证总开关；False 表示向后兼容
+    api_keys: List[str] = field(default_factory=list)
+
+    rate_limit_per_minute: int = 30            # 每 IP / 分钟
+    rate_limit_per_key_per_minute: int = 60    # 每 Key / 分钟
+    max_concurrent_chat: int = 5               # 同时 pipeline.chat() 上限
+    max_request_body_bytes: int = 10_485_760   # 10 MB
+    max_messages_per_request: int = 50
+
+    auth_fail_ban_threshold: int = 10          # 连续认证失败 N 次后封 IP
+    auth_fail_ban_duration_seconds: int = 600  # 封禁 10 分钟
+    ip_whitelist: List[str] = field(default_factory=list)
+
+    cors_enabled: bool = False
+    cors_origins: List[str] = field(default_factory=lambda: ["*"])
+
+    ssl_certfile: Optional[str] = None
+    ssl_keyfile: Optional[str] = None
+
+    debug: bool = False  # API debug 日志开关
+    include_debug_in_response: bool = False  # 是否在 API 响应中包含 debug 信息
+
+    def __post_init__(self):
+        env_keys = os.environ.get("API_SERVICE_KEYS", "")
+        if env_keys:
+            self.api_keys = [k.strip() for k in env_keys.split(",") if k.strip()]
+
 

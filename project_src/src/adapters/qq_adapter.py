@@ -324,7 +324,7 @@ class QQBotAdapter:
         elif self.agent_loop:
             self.agent_loop.push(event)
 
-    def _make_output_callback(self) -> Callable[[str], None]:
+    def _make_output_callback(self) -> Callable[[str, dict], None]:
         """
         创建 output_callback 闭包。
 
@@ -332,19 +332,15 @@ class QQBotAdapter:
         使用 asyncio.run_coroutine_threadsafe() 桥接到主线程的 asyncio 事件循环。
 
         回复路由优先级：
-        1. AgentLoop._current_reply_context（当前正在处理的事件绑定的目标）
+        1. reply_context 参数（当前正在处理的事件绑定的目标）
         2. _last_reply_target（fallback，用于主动发言）
         3. 如果都没有 → 发给 owner（系统通知兜底）
         """
         adapter = self
 
-        def callback(text: str):
-            # 优先从当前事件的 reply_context 取目标
-            target = (
-                adapter.agent_loop._current_reply_context
-                if adapter.agent_loop and adapter.agent_loop._current_reply_context
-                else adapter._last_reply_target
-            )
+        def callback(text: str, reply_context: dict):
+            # 优先从参数取目标，空 dict 时 fallback
+            target = reply_context if reply_context else adapter._last_reply_target
 
             # 如果没有回复目标（系统启动时的主动发言等），发给 owner
             if not target:
@@ -381,7 +377,7 @@ class QQBotAdapter:
 
         return callback
 
-    def _make_output_callback_for_loop(self, loop: AgentLoop) -> Callable[[str], None]:
+    def _make_output_callback_for_loop(self, loop: AgentLoop) -> Callable[[str, dict], None]:
         """
         为指定 AgentLoop 创建 output_callback（多 persona 模式使用）。
 
@@ -390,12 +386,8 @@ class QQBotAdapter:
         """
         adapter = self
 
-        def callback(text: str):
-            target = (
-                loop._current_reply_context
-                if loop._current_reply_context
-                else adapter._last_reply_target
-            )
+        def callback(text: str, reply_context: dict):
+            target = reply_context if reply_context else adapter._last_reply_target
 
             if not target:
                 if adapter.config.owner_qq:

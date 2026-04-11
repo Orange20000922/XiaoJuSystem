@@ -13,3 +13,6 @@ tiktoken>=0.7.0
 
 # 日志
 loguru>=0.7.0
+
+# 视觉感知原型
+opencv-python-headless>=4.10.0

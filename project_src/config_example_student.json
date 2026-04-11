@@ -1,4 +1,4 @@
-{
+﻿{
   "_README": [
     "=== 数字学生配置模板 ===",
     "复制此文件为 config.json，按注释填写。",
@@ -292,7 +292,49 @@
   },
 
   "audio": {
-    "_comment": "[可选] 语音合成，不需要可设 enabled=false",
-    "enabled": false
+    "_comment": [
+      "[可选] 语音合成，不需要可设 enabled=false",
+      "tts_provider 支持 cosyvoice / edge-tts / indextts2",
+      "edge-tts 开箱即用但依赖网络，IndexTTS2 需要本地模型和说话人参考音频"
+    ],
+    "enabled": false,
+    "tts_provider": "edge-tts",
+    "cache_dir": "./data/audio_cache",
+    "cache_enabled": true,
+    "auto_play": false,
+    "emotion_ref_map": {},
+    "cosyvoice": {
+      "repo_dir": "",
+      "model_dir": "./models/CosyVoice2-0.5B",
+      "ref_audio_dir": "./data/audio_refs",
+      "default_ref_audio": "default.wav",
+      "default_ref_text": "",
+      "sample_rate": 22050,
+      "speed": 1.0
+    },
+    "edge_tts": {
+      "voice": "zh-CN-XiaoxiaoNeural",
+      "rate": "+0%",
+      "volume": "+0%",
+      "pitch": "+0Hz",
+      "proxy": null
+    },
+    "indextts2": {
+      "repo_dir": "",
+      "model_dir": "./models/IndexTTS2",
+      "cfg_path": "",
+      "speaker_audio": "",
+      "emotion_audio": "",
+      "emo_text": "",
+      "emo_vector": [],
+      "emo_alpha": 0.9,
+      "use_emo_text": false,
+      "use_random": false,
+      "use_fp16": false,
+      "use_cuda_kernel": false,
+      "use_deepspeed": false
+    }
   }
 }
+
+

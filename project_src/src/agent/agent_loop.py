@@ -17,6 +17,7 @@ import gc
 import json
 import time
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -44,13 +45,14 @@ class ProactiveState(Enum):
 @dataclass
 class AgentEvent:
     """Agent 事件"""
-    type: str          # "message" | "system"
+    type: str          # "message" | "system" | "visual"
     content: str       # 消息内容 / 系统事件描述
     chat_mode: ChatMode = ChatMode.PRIVATE
     is_mentioned: bool = True
     timestamp: float = field(default_factory=time.time)
     reply_context: dict = field(default_factory=dict)  # 适配层回复路由信息
     images: list = field(default_factory=list)         # 图片列表（ImageResult 对象）
+    metadata: dict = field(default_factory=dict)       # 结构化附加信息
     user_id: Optional[int] = None                      # 用户 QQ 号（群聊注意力追踪）
     user_name: Optional[str] = None                    # 用户昵称（群聊注意力追踪）
     context_id: Optional[str] = None                   # 对话上下文标识（群号/私聊用户ID）
@@ -68,7 +70,7 @@ class AgentLoop:
         self,
         pipeline: NeuroLikePipeline,
         config: AgentConfig,
-        output_callback: Callable[[str], None],
+        output_callback: Callable[[str, dict], None],
         proactive_config: Optional[ProactiveConfig] = None,
     ):
         self.pipeline = pipeline
@@ -83,7 +85,12 @@ class AgentLoop:
         self.proactive_state = ProactiveState.NORMAL
         self._stop_event = Event()
         self._thread: Optional[Thread] = None
-        self._current_reply_context: dict = {}  # 当前正在处理的事件的回复路由
+
+        # 并发聊天线程池：每个 persona 最多同时处理 N 条消息
+        self._chat_pool = ThreadPoolExecutor(
+            max_workers=config.max_concurrent_chats,
+            thread_name_prefix=f"chat-{pipeline.personality.name}",
+        )
 
         # 初始化主动决策模块
         if self.proactive_config.enabled:
@@ -132,6 +139,8 @@ class AgentLoop:
         self._stop_event.set()
         self._thread.join(timeout=self.config.tick_interval + 5)
         self._thread = None
+        # 等待进行中的聊天完成
+        self._chat_pool.shutdown(wait=True, cancel_futures=False)
         # 写入长期记忆
         self.pipeline.close()
         logger.info("Agent 循环已停止")
@@ -156,6 +165,8 @@ class AgentLoop:
                         self._handle_message(event)
                     elif event.type == "system":
                         self._handle_system_event(event)
+                    elif event.type == "visual":
+                        self._handle_visual_event(event)
                 else:
                     self._check_proactive_triggers()
 
@@ -176,14 +187,20 @@ class AgentLoop:
             return None
 
     def _handle_message(self, event: AgentEvent):
-        """处理用户消息事件"""
+        """处理用户消息事件：提交到线程池，不阻塞事件循环"""
         self.last_user_time = time.time()
-        self._current_reply_context = event.reply_context
 
         # 状态机转换：收到用户消息后重置为 NORMAL
         if self.proactive_state in (ProactiveState.WAITING_RESPONSE, ProactiveState.DORMANT):
             logger.info(f"收到用户消息，状态从 {self.proactive_state.value} 重置为 normal")
             self.proactive_state = ProactiveState.NORMAL
+
+        # 提交到线程池，不再阻塞事件循环
+        self._chat_pool.submit(self._process_chat, event)
+
+    def _process_chat(self, event: AgentEvent):
+        """在线程池线程中执行聊天处理"""
+        reply_context = event.reply_context
 
         # 群聊场景：被 @ 时启用融合（提高注意力判断准确率）
         # 未被 @ 时使用配置默认值（None 会让 chat() 自动读取 config.use_by_default）
@@ -202,13 +219,10 @@ class AgentLoop:
             )
 
             if result["should_respond"] and result["response"]:
-                self.output_callback(result["response"])
+                self.output_callback(result["response"], reply_context)
 
         except Exception as e:
             logger.error(f"处理消息失败: {e}")
-        finally:
-            # 清空当前回复上下文，避免主动发言误用
-            self._current_reply_context = {}
 
     def _handle_system_event(self, event: AgentEvent):
         """处理系统事件（低级主动：由外部事件触发）"""
@@ -226,7 +240,27 @@ class AgentLoop:
         )
         if response:
             self.last_proactive_time = now
-            self.output_callback(response)
+            self.output_callback(response, {})
+
+    def _handle_visual_event(self, event: AgentEvent):
+        """
+        处理视觉事件。
+
+        当前 MVP 将视觉事件作为一种消息输入送入主对话链路，
+        以复用现有的记忆、情绪和回复生成逻辑。
+        """
+        self.last_user_time = time.time()
+        should_route_to_chat = True
+
+        if hasattr(self.pipeline, "handle_visual_event"):
+            try:
+                result = self.pipeline.handle_visual_event(event)
+                should_route_to_chat = result.get("route_to_chat", True)
+            except Exception as e:
+                logger.error(f"视觉事件预处理失败: {e}", exc_info=True)
+
+        if should_route_to_chat:
+            self._chat_pool.submit(self._process_chat, event)
 
     def _check_proactive_triggers(self):
         """根据 proactive_level 和状态机检查是否需要主动发言"""
@@ -315,7 +349,7 @@ class AgentLoop:
             self.last_proactive_attempt_time = now
             self.proactive_state = ProactiveState.WAITING_RESPONSE
             logger.info(f"主动发言成功，进入 WAITING_RESPONSE 状态")
-            self.output_callback(response)
+            self.output_callback(response, {})
 
     def _check_response_timeout(self):
         """检查主动发言后是否超时无回应"""
@@ -402,4 +436,4 @@ class AgentLoop:
 
         if response:
             self.last_proactive_time = now
-            self.output_callback(response)
+            self.output_callback(response, {})

@@ -197,6 +197,52 @@ class EmotionStateTracker:
 
         return self.state
 
+    def apply_stimulus(
+        self,
+        valence_delta: float = 0.0,
+        arousal_delta: float = 0.0,
+    ) -> EmotionState:
+        """
+        将弱外部刺激直接作用到连续情绪状态。
+
+        该接口用于视觉观察这类旁路信号：
+        它们不等同于完整用户发言，但可以对内部情绪状态施加一个有界、
+        低延迟的小扰动。
+        """
+        cfg = self.config
+        v, a = self.state.valence, self.state.arousal
+
+        phi = cfg.alpha - cfg.delta
+        theta = 1.0 - phi
+
+        theta_v = theta
+        if v < cfg.baseline_valence and cfg.negativity_bias > 1.0:
+            theta_v = theta / cfg.negativity_bias
+        phi_v = 1.0 - theta_v
+
+        self.state.prev_valence = v
+        self.state.valence = math.tanh(
+            phi_v * v
+            + theta_v * cfg.baseline_valence
+            + cfg.kappa * (a - cfg.baseline_arousal)
+            + valence_delta
+        )
+        self.state.arousal = math.tanh(
+            phi * a
+            + theta * cfg.baseline_arousal
+            + cfg.kappa * (v - cfg.baseline_valence)
+            + arousal_delta
+        )
+
+        new_label = self._state_to_label()
+        if new_label == self.state.sustained_label:
+            self.state.sustained_turns += 1
+        else:
+            self.state.sustained_label = new_label
+            self.state.sustained_turns = 1
+        self.state.last_emotion = new_label
+        return self.state
+
     def get_param_adjustments(
         self,
         base_temp: float,

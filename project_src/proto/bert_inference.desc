@@ -1,0 +1,40 @@
+
+ð
+bert_inference.protobert_inference"7
+TensorInt64
+data (Rdata
+shape (Rshape"7
+TensorFloat
+data (Rdata
+shape (Rshape"v
+PredictRequest
+	input_ids (RinputIds%
+attention_mask (RattentionMask 
+personality (Rpersonality"ì
+PredictResponse%
+emotion_logits (RemotionLogits'
+behavior_logits (RbehaviorLogits
+tone_logits (R
+toneLogits
+	intensity (R	intensity4
+response_length_logits (RresponseLengthLogits
+error (	Rerror"¹
+PredictBatchRequest
+	input_ids (RinputIds%
+attention_mask (RattentionMask 
+personality (Rpersonality
+
+batch_size (R	batchSize
+
+seq_length (R	seqLength"ñ
+PredictBatchResponse%
+emotion_logits (RemotionLogits'
+behavior_logits (RbehaviorLogits
+tone_logits (R
+toneLogits
+	intensity (R	intensity4
+response_length_logits (RresponseLengthLogits
+error (	Rerror2¶
+BERTInferenceJ
+Predict.bert_inference.PredictRequest.bert_inference.PredictResponseY
+PredictBatch#.bert_inference.PredictBatchRequest$.bert_inference.PredictBatchResponsebproto3

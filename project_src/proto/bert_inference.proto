@@ -1,0 +1,50 @@
+﻿syntax = "proto3";
+
+package bert_inference;
+
+service BERTInference {
+  rpc Predict(PredictRequest) returns (PredictResponse);
+  rpc PredictBatch(PredictBatchRequest) returns (PredictBatchResponse);
+}
+
+message TensorInt64 {
+  repeated int64 data = 1;
+  repeated int64 shape = 2;
+}
+
+message TensorFloat {
+  repeated float data = 1;
+  repeated int64 shape = 2;
+}
+
+message PredictRequest {
+  repeated int64 input_ids = 1;
+  repeated int64 attention_mask = 2;
+  repeated float personality = 3;
+}
+
+message PredictResponse {
+  repeated float emotion_logits = 1;
+  repeated float behavior_logits = 2;
+  repeated float tone_logits = 3;
+  float intensity = 4;
+  repeated float response_length_logits = 5;
+  string error = 6;
+}
+
+message PredictBatchRequest {
+  repeated int64 input_ids = 1;
+  repeated int64 attention_mask = 2;
+  repeated float personality = 3;
+  int32 batch_size = 4;
+  int32 seq_length = 5;
+}
+
+message PredictBatchResponse {
+  repeated float emotion_logits = 1;
+  repeated float behavior_logits = 2;
+  repeated float tone_logits = 3;
+  repeated float intensity = 4;
+  repeated float response_length_logits = 5;
+  string error = 6;
+}

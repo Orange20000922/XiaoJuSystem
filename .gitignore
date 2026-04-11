@@ -1,4 +1,4 @@
-# 运行时配置（含 API key，不提交）
+﻿# 杩愯鏃堕厤缃紙鍚?API key锛屼笉鎻愪氦锛?
 project_src/config.json
 
 # Visual Studio
@@ -13,6 +13,8 @@ pytorch_env/
 venv/
 .venv/
 Scripts/
+!project_src/scripts/
+!project_src/scripts/**
 share/
 # Python cache files
 __pycache__/

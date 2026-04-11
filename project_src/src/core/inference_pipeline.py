@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, TYPE_CHECKING
 
 import sys
-project_root = Path(__file__).parent.parent.parent
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.logger import logger
@@ -31,6 +31,8 @@ from configs.model_config import (
     AttentionConfig,
     LLMConfig,
     MemoryConfig,
+    SmallModelConfig,
+    VisualPerceptionSettings,
 )
 from configs.config_loader import AppConfig
 
@@ -109,6 +111,7 @@ class NeuroLikePipeline:
         emotion_fusion_config: Optional[EmotionFusionConfig] = None,
         emotion_state_config: Optional[EmotionStateConfig] = None,
         attention_config: Optional[AttentionConfig] = None,
+        visual_perception_config: Optional[VisualPerceptionSettings] = None,
         # 向后兼容的参数
         llm_provider: Optional[str] = None,
         llm_api_key: Optional[str] = None,
@@ -116,16 +119,20 @@ class NeuroLikePipeline:
         llm_base_url: Optional[str] = None,
         device: str = "cpu",
         time_awareness: bool = True,
+        small_model_config: Optional[SmallModelConfig] = None,
     ):
         from src.core.shared_infra import SharedInfra, BERTInferenceEngine, LLMClientPool
         from src.core.persona import PersonaInstance
         from configs.model_config import LLMProvider as _LLMProvider
 
         # ── 构建 SharedInfra ──────────────────────────────────────────
-        bert = BERTInferenceEngine(
-            checkpoint_path=small_model_path,
-            device=device,
-        )
+        if small_model_config is None:
+            small_model_config = SmallModelConfig(
+                checkpoint_path=small_model_path,
+                device=device,
+            )
+
+        bert = BERTInferenceEngine(small_model_config=small_model_config)
 
         # 兼容旧式参数（llm_provider / llm_api_key / ...）
         if llm_config is None and llm_provider is not None:
@@ -182,6 +189,7 @@ class NeuroLikePipeline:
             emotion_fusion_config=emotion_fusion_config,
             emotion_state_config=emotion_state_config,
             attention_config=attention_config,
+            visual_perception_config=visual_perception_config,
             time_awareness=time_awareness,
         )
 
@@ -201,8 +209,10 @@ class NeuroLikePipeline:
             emotion_fusion_config=app_cfg.emotion_fusion,
             emotion_state_config=app_cfg.emotion_state_config,
             attention_config=app_cfg.attention,
+            visual_perception_config=app_cfg.visual_perception,
             device=app_cfg.device,
             time_awareness=app_cfg.agent.time_awareness,
+            small_model_config=app_cfg.small_model,
         )
 
     # ── 委托属性（AgentLoop 需要访问）─────────────────────────────────────
@@ -242,6 +252,10 @@ class NeuroLikePipeline:
     @property
     def emotion_prompt_config(self):
         return self._persona.emotion_prompt_config
+
+    @property
+    def visual_perception_config(self):
+        return self._persona.visual_perception_config
 
     @property
     def emotion_fusion_config(self):
@@ -291,6 +305,9 @@ class NeuroLikePipeline:
 
     def close(self):
         self._persona.close()
+
+    def handle_visual_event(self, event) -> Dict:
+        return self._persona.handle_visual_event(event)
 
     def _handle_group_passive_message(self, user_input: str,
                                        context_id: Optional[str] = None) -> Dict:
