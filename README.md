@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🍊 XiaoJu — A Neuro-like AI Companion
+# 🍊 XiaoJu — An Open AI Companion with Continuous Emotion Dynamics
 
 **一个具有连续情绪动力学、分级记忆与多模态感知的 AI 伙伴系统**
 
@@ -17,7 +17,7 @@
 
 ---
 
-## ✨ 为什么是另一个 AI 伙伴项目？
+## ✨ 本项目的特殊亮点：
 
 大多数"Neuro-like"项目是 LLM prompt + TTS 的包装。本项目尝试回答一个更底层的问题：**如何让 AI 伙伴的情绪、记忆、感知有可验证的数学结构，而不是纯 prompt 工程。**
 

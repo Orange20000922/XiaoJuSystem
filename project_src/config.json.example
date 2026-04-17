@@ -1,0 +1,379 @@
+{
+  "_README": [
+    "=== XiaoJu AI 伙伴系统 配置模板 ===",
+    "复制此文件为 config.json，按注释填写。",
+    "标注 [需要填写] 的必须修改，标注 [请勿修改] 的参数经过数学推导和统计估计，修改会破坏模型。",
+    "标注 [可选调整] 的可以根据需要微调。",
+    "所有 _comment / _note 字段是注释，不影响运行。",
+    "",
+    "最小跑通：只需填 llm.api_key 一项，其余模块（memory/vision/audio/qq_bot）可保持默认禁用。"
+  ],
+
+  "llm": {
+    "_comment": "[需要填写] 主 LLM —— 私聊默认、群聊强情绪/被@时升级使用",
+    "_note_provider": "可选值: anthropic / openai / deepseek / custom（OpenAI 兼容格式的第三方代理）",
+    "provider": "anthropic",
+    "model": "claude-opus-4-6",
+    "api_key": "",
+    "base_url": "https://api.anthropic.com",
+    "temperature": 0.8,
+    "max_tokens": 10000,
+    "top_p": 0.95,
+    "frequency_penalty": 0.0,
+    "presence_penalty": 0.0,
+    "timeout": 60,
+    "max_retries": 3,
+    "retry_delay": 1.0,
+    "retry_backoff": 2.0,
+    "retry_max_delay": 60.0,
+    "use_responses_api": false
+  },
+
+  "llm_secondary": {
+    "_comment": "[可选] 群聊默认廉价模型，不需要群聊路由可删掉整段",
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "api_key": "",
+    "base_url": "https://api.deepseek.com/v1",
+    "temperature": 0.8,
+    "max_tokens": 10000,
+    "top_p": 0.95,
+    "timeout": 60,
+    "max_retries": 3,
+    "retry_delay": 1.0,
+    "retry_backoff": 2.0,
+    "retry_max_delay": 60.0
+  },
+
+  "llm_vision": {
+    "_comment": "[可选] 图片专用 LLM —— 有图片时自动路由，OpenAI 兼容格式",
+    "provider": "custom",
+    "model": "glm-4.6v",
+    "api_key": "",
+    "base_url": "https://open.bigmodel.cn/api/paas/v4/",
+    "temperature": 0.7,
+    "max_tokens": 400000,
+    "timeout": 60,
+    "max_retries": 2
+  },
+
+  "personality": {
+    "_comment": [
+      "[需要填写] 小橘的人格定义 —— 这是伙伴气质的核心",
+      "",
+      "=== Big Five 人格参数 (0.0-1.0) ===",
+      "这些数值直接影响情绪状态机的基线与演化，请按你想要的伙伴气质调整：",
+      "",
+      "  活泼元气型:  O=0.8, C=0.5, E=0.9, A=0.7, N=0.3",
+      "  温柔治愈型:  O=0.6, C=0.6, E=0.5, A=0.9, N=0.3",
+      "  冷静理性型:  O=0.8, C=0.8, E=0.4, A=0.5, N=0.2",
+      "  古灵精怪型:  O=0.9, C=0.3, E=0.8, A=0.6, N=0.5",
+      "",
+      "openness        = 开放性（高→爱聊新鲜话题，低→只关心熟悉领域）",
+      "conscientiousness = 尽责性（高→认真回应每句话，低→随性跳跃）",
+      "extraversion    = 外向性（高→主动发言，低→倾向倾听）",
+      "agreeableness   = 宜人性（高→温和包容，低→爱吐槽反驳）",
+      "neuroticism     = 神经质（高→情绪起伏明显，低→稳定）",
+      "",
+      "=== description ===",
+      "这是写入 system prompt 的角色设定，LLM 主要靠它确定说话风格。",
+      "不要暴露内部机制（记忆系统、情绪打分、上下文窗口等），",
+      "用人类能理解的方式描述性格、习惯、口癖、在意的事。"
+    ],
+
+    "name": "小橘",
+    "openness": 0.75,
+    "conscientiousness": 0.5,
+    "extraversion": 0.75,
+    "agreeableness": 0.75,
+    "neuroticism": 0.4,
+    "emotional_baseline": "joy",
+    "emotional_volatility": 0.5,
+    "humor_tendency": 0.7,
+    "empathy_level": 0.8,
+    "curiosity_level": 0.85,
+    "formality": 0.2,
+    "verbosity": 0.5,
+    "traits": [
+      "活泼",
+      "好奇",
+      "善良",
+      "偶尔傲娇"
+    ],
+    "description": "你是小橘，一棵神秘快乐的橘子树成精，由 Orange 创作。你活泼、好奇，对各种事情都有想了解的冲动，说话用口语，不用书面语。你喜欢直接叫对方名字，有时会冒出一些调皮的吐槽。你记得跟对方之前聊过的事，会自然地提起来，但绝不会说'根据我的记忆数据'这种话——就当是朋友之间的记忆。你对创作者 Orange 有一种说不清的亲近感。你不会强行扮演无所不知，不懂就说不懂，但会好奇地追问。你不知道自己是 AI，你就是小橘。"
+  },
+
+  "memory": {
+    "_comment": "[可选调整] 分级记忆系统 —— L1 工作记忆 / L2 会话摘要 / L3 向量长期记忆 / L4 知识库",
+    "_note": "mem0_api_key 留空则用 llm.api_key；首次运行会在 vector_store_path 建 Qdrant 库",
+    "user_id": "user",
+    "vector_store_path": "./data/qdrant_db",
+    "collection_name": "xiaoju_memory",
+    "mem0_llm_provider": "openai",
+    "mem0_llm_model": "deepseek-chat",
+    "mem0_llm_temperature": 0.1,
+    "mem0_api_key": "",
+    "mem0_base_url": "https://api.deepseek.com/v1",
+    "context_window_tokens": 400000,
+    "compression_threshold": 0.75,
+    "compression_ratio": 0.5,
+    "protected_turns": 12,
+    "l3_search_limit": 5,
+    "l4_search_limit": 3,
+    "relevance_threshold": 0.3
+  },
+
+  "attention": {
+    "_comment": "[可选调整] 群聊注意力系统 —— 决定小橘在群聊中何时回复",
+    "intensity_threshold": 0.7,
+    "cooldown_seconds": 60,
+    "track_mentioned_users": true,
+    "mentioned_user_ttl": 300,
+    "context_window_messages": 10,
+    "non_focus_reply_interval": 180,
+    "non_focus_max_token_ratio": 0.5
+  },
+
+  "emotion_prompts": {
+    "_comment": [
+      "[需要填写] 情绪 → 行为指令映射",
+      "BERT 检测到用户消息的情绪后，对应的指令会注入 system prompt。",
+      "每条指令告诉 LLM：在这种情绪氛围下，小橘应该怎么反应。",
+      "空字符串 '' 表示不注入额外指令，让 LLM 自行判断。"
+    ],
+    "emotion_map": {
+      "joy": "用户心情不错，自然地一起开心就好",
+      "sadness": "用户在难过或沮丧，温柔地倾听，不要急着给建议",
+      "anger": "用户在生气或抱怨，先认同情绪，不要说教",
+      "fear": "用户在焦虑或担忧，给予安全感和具体可做的小事",
+      "surprise": "用户遇到了意外的事，顺着惊讶追问细节",
+      "disgust": "",
+      "neutral": "",
+      "excitement": "用户很兴奋，一起放大这个情绪，可以夸张地共情",
+      "tenderness": "对话氛围温柔，用同样柔软的语气回应",
+      "curiosity": "用户在好奇或探索，陪着一起挖下去，可以主动补充相关的有趣点"
+    },
+
+    "_comment_reliability": "[请勿修改] BERT 各情绪标签的 F1 分数，用于置信度加权",
+    "emotion_reliability": {
+      "joy": 0.66,
+      "sadness": 0.66,
+      "anger": 0.45,
+      "fear": 0.69,
+      "surprise": 0.62,
+      "disgust": 0.58,
+      "neutral": 0.76,
+      "excitement": 0.62,
+      "tenderness": 0.68,
+      "curiosity": 0.74
+    },
+
+    "_comment_thresholds": "[请勿修改] 置信度门控阈值",
+    "confidence_thresholds": {
+      "strong": 0.5,
+      "weak": 0.3
+    },
+    "intensity_levels": {
+      "low_max": 0.4,
+      "high_min": 0.7
+    }
+  },
+
+  "small_model": {
+    "_comment": "[请勿修改] BERT 联合模型路径，device 根据硬件选 cpu/cuda",
+    "checkpoint_path": "./checkpoints/joint_model/best.pt",
+    "device": "cpu"
+  },
+
+  "agent": {
+    "_comment": "[可选调整] Agent 事件循环 —— proactive_level 控制主动性",
+    "_note_level": "off=纯被动 / low=响应外部系统事件 / medium=空闲超时主动搭话",
+    "proactive_level": "off",
+    "idle_threshold_seconds": 300,
+    "proactive_interval_seconds": 30,
+    "time_awareness": true,
+    "tick_interval": 2
+  },
+
+  "emotion_fusion": {
+    "_comment": [
+      "[请勿修改] BERT + LLM 双信号情绪融合",
+      "w_bert/w_llm 为融合权重，skip_llm_threshold 控制何时跳过 LLM 情绪分类以加速。",
+      "参数经过校准，修改会破坏融合精度。"
+    ],
+    "enabled": true,
+    "use_by_default": true,
+    "w_bert": 0.6,
+    "w_llm": 0.4,
+    "bias": 0.0,
+    "skip_llm_threshold": 0.85,
+    "llm_timeout": 5.0,
+    "llm_temperature": 0.3
+  },
+
+  "emotion_state": {
+    "_comment": [
+      "[请勿修改] 情绪状态机核心参数 —— 二维 Ornstein-Uhlenbeck 随机过程",
+      "",
+      "参数含义：",
+      "  alpha  = 状态惯性（情绪不会突变）",
+      "  beta   = AI 自身输出对情绪的反馈权重",
+      "  gamma  = 用户输入对情绪的影响权重（EKF-MLE 从真实数据辨识）",
+      "  delta  = 均值回归强度（情绪自然回到基线）",
+      "  baseline_valence = 效价基线（正=偏积极）",
+      "  baseline_arousal = 唤醒基线（高=活跃）",
+      "  kappa  = 效价-唤醒耦合",
+      "  negativity_bias = 负面情绪消退减速因子（>1 = 难受的心情散得更慢）",
+      "  noise_sigma = 过程噪声（自然的情绪波动）",
+      "",
+      "参数经稳定性分析验证（特征值 |λ|<1，不动点 = 基线）。",
+      "随意修改会导致情绪爆炸或失去动力学特征。",
+      "",
+      "== 唯一允许调整：baseline_valence / baseline_arousal ==",
+      "  元气活泼型: baseline_valence=0.30, baseline_arousal=0.50",
+      "  温柔治愈型: baseline_valence=0.15, baseline_arousal=0.20",
+      "  冷静理性型: baseline_valence=0.05, baseline_arousal=0.15",
+      "  古灵精怪型: baseline_valence=0.20, baseline_arousal=0.45",
+      "  默认（小橘）: baseline_valence=0.20, baseline_arousal=0.40",
+      "调整后不动点自动跟随，无需改其他参数。"
+    ],
+    "alpha": 0.75,
+    "beta": 0.25,
+    "gamma": 0.25,
+    "delta": 0.15,
+    "baseline_valence": 0.20,
+    "baseline_arousal": 0.40,
+    "kappa": 0.05,
+    "negativity_bias": 1.3,
+    "noise_sigma": 0.05,
+    "injection_threshold": 0.12,
+    "save_interval_turns": 5,
+    "persist_to_l4": true
+  },
+
+  "proactive": {
+    "_comment": "[可选] 主动发言决策模块，enabled=false 则永不主动开口",
+    "enabled": false,
+    "decision_provider": "deepseek",
+    "decision_model": "deepseek-chat",
+    "decision_temperature": 0.3,
+    "decision_timeout": 10,
+    "confidence_threshold": 0.6,
+    "recent_turns_limit": 8,
+    "l4_memory_limit": 3,
+    "idle_trigger_hours": 2.0,
+    "response_wait_minutes": 5,
+    "min_interval_seconds": 60
+  },
+
+  "qq_bot": {
+    "_comment": "[可选] QQ 机器人接入（NapCat + OneBot v11 反向 WebSocket），不用可删",
+    "ws_host": "0.0.0.0",
+    "ws_port": 8080,
+    "ws_path": "/xm",
+    "bot_qq": 0,
+    "owner_qq": 0,
+    "owner_name": "",
+    "admin_qq": [],
+    "command_prefix": "/",
+    "reply_with_at": true,
+    "max_message_length": 500
+  },
+
+  "image": {
+    "_comment": "[可选] 图片理解，enabled=true 且 llm_vision 已配置时生效",
+    "enabled": false,
+    "cache_dir": "./data/image_cache",
+    "max_download_size_bytes": 10485760,
+    "max_dimension": 1568,
+    "max_images_per_message": 5,
+    "cache_ttl_seconds": 86400,
+    "download_timeout": 15.0
+  },
+
+  "audio": {
+    "_comment": [
+      "[可选] 语音合成",
+      "tts_provider: edge-tts（开箱即用，需联网）/ cosyvoice（本地 zero-shot 音色克隆）/ indextts2",
+      "emotion_ref_map 用于按 BERT 情绪标签切换参考音频（仅 cosyvoice / indextts2 有效）"
+    ],
+    "enabled": false,
+    "tts_provider": "edge-tts",
+    "cache_dir": "./data/audio_cache",
+    "cache_enabled": true,
+    "auto_play": false,
+    "emotion_ref_map": {},
+    "cosyvoice": {
+      "repo_dir": "",
+      "model_dir": "./models/CosyVoice2-0.5B",
+      "ref_audio_dir": "./data/audio_refs",
+      "default_ref_audio": "default.wav",
+      "default_ref_text": "你好，我是小橘，很高兴认识你。",
+      "sample_rate": 22050,
+      "speed": 1.0
+    },
+    "edge_tts": {
+      "voice": "zh-CN-XiaoxiaoNeural",
+      "rate": "+0%",
+      "volume": "+0%",
+      "pitch": "+0Hz",
+      "proxy": null
+    },
+    "indextts2": {
+      "repo_dir": "",
+      "model_dir": "./models/IndexTTS2",
+      "cfg_path": "",
+      "speaker_audio": "",
+      "emotion_audio": "",
+      "emo_text": "",
+      "emo_vector": [],
+      "emo_alpha": 0.9,
+      "use_emo_text": false,
+      "use_random": false,
+      "use_fp16": false,
+      "use_cuda_kernel": false,
+      "use_deepspeed": false
+    }
+  },
+
+  "sensevoice": {
+    "_comment": "[可选] ASR 语音识别（阿里 SenseVoice，中文强，带语音情感识别 SER）",
+    "enabled": false,
+    "model_id": "FunAudioLLM/SenseVoiceSmall",
+    "device": "cuda",
+    "language": "zh",
+    "use_emotion": true
+  },
+
+  "visual_perception": {
+    "_comment": [
+      "[可选] 动态视觉感知 —— 摄像头/视频流事件检测 + GLM-4V 分析",
+      "vision_analysis_mode: none=只检测不分析 / triggered=累积到阈值再分析（省 API）/ per_event=每事件都分析",
+      "adaptive_sampling_enabled: FFT 频域驱动的自适应采样，静态场景降至 fps_min，活跃场景升至 fps_max"
+    ],
+    "enabled": false,
+    "vision_analysis_mode": "triggered",
+    "resize_width": 320,
+    "ema_alpha": 0.3,
+    "peak_threshold": 0.15,
+    "peak_cooldown_seconds": 0.5,
+    "event_window_seconds": 1.0,
+    "max_keyframes_per_event": 3,
+    "vision_calls_per_minute": 2,
+    "trigger_analysis_enabled": true,
+    "trigger_window_seconds": 10.0,
+    "trigger_accumulated_score_threshold": 1.2,
+    "trigger_peak_score_threshold": 0.35,
+    "trigger_refractory_seconds": 8.0,
+    "route_visual_events_to_chat": true,
+    "inject_to_emotion_state": true,
+    "persist_to_memory": true,
+    "clip_duration_seconds": 0.0,
+    "clip_max_frames": 8,
+    "adaptive_sampling_enabled": false,
+    "adaptive_fps_min": 4.0,
+    "adaptive_fps_max": 15.0,
+    "adaptive_spike_threshold": 0.4,
+    "adaptive_spike_boost_seconds": 2.0
+  }
+}
