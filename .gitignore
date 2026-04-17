@@ -1,5 +1,5 @@
 # 运行时配置（含 API key，不提交）
-project_src/config.json
+project_src/config
 
 # Visual Studio
 .vscode/
