@@ -323,6 +323,7 @@ def load_visual_perception_config(cfg: dict) -> VisualPerceptionSettings:
     vp = cfg.get("visual_perception", {})
     return VisualPerceptionSettings(
         enabled=vp.get("enabled", False),
+        vision_analysis_mode=vp.get("vision_analysis_mode", "triggered"),
         resize_width=vp.get("resize_width", 320),
         gaussian_kernel_size=vp.get("gaussian_kernel_size", 5),
         mog2_history=vp.get("mog2_history", 500),
@@ -345,6 +346,8 @@ def load_visual_perception_config(cfg: dict) -> VisualPerceptionSettings:
         observation_queue_size=vp.get("observation_queue_size", 32),
         event_queue_size=vp.get("event_queue_size", 16),
         vision_calls_per_minute=vp.get("vision_calls_per_minute", 2),
+        vision_rate_limit_wait_for_file_source=vp.get("vision_rate_limit_wait_for_file_source", True),
+        vision_rate_limit_max_wait_seconds=vp.get("vision_rate_limit_max_wait_seconds", 90.0),
         area_sigmoid_center=vp.get("area_sigmoid_center", 0.02),
         area_sigmoid_scale=vp.get("area_sigmoid_scale", 0.01),
         histogram_sigmoid_center=vp.get("histogram_sigmoid_center", 0.08),
@@ -357,8 +360,22 @@ def load_visual_perception_config(cfg: dict) -> VisualPerceptionSettings:
         route_visual_events_to_chat=vp.get("route_visual_events_to_chat", True),
         inject_to_emotion_state=vp.get("inject_to_emotion_state", True),
         persist_to_memory=vp.get("persist_to_memory", True),
+        weak_monitor_buffer_seconds=vp.get("weak_monitor_buffer_seconds", 30.0),
+        segment_merge_gap_seconds=vp.get("segment_merge_gap_seconds", 2.0),
+        trigger_analysis_enabled=vp.get("trigger_analysis_enabled", True),
+        trigger_window_seconds=vp.get("trigger_window_seconds", 10.0),
+        trigger_accumulated_score_threshold=vp.get("trigger_accumulated_score_threshold", 1.2),
+        trigger_peak_score_threshold=vp.get("trigger_peak_score_threshold", 0.35),
+        trigger_min_strong_events=vp.get("trigger_min_strong_events", 2),
+        trigger_refractory_seconds=vp.get("trigger_refractory_seconds", 8.0),
+        explicit_request_top_k=vp.get("explicit_request_top_k", 2),
+        summary_enabled=vp.get("summary_enabled", True),
+        summary_window_seconds=vp.get("summary_window_seconds", 30.0),
+        summary_top_k=vp.get("summary_top_k", 3),
         visual_emotion_scale=vp.get("visual_emotion_scale", 0.2),
         memory_peak_score_threshold=vp.get("memory_peak_score_threshold", 0.22),
+        clip_duration_seconds=vp.get("clip_duration_seconds", 0.0),
+        clip_max_frames=vp.get("clip_max_frames", 8),
     )
 
 
@@ -519,7 +536,7 @@ class AppConfig:
                 "config.json not found. Copy config.example.json to config.json and fill in the required values."
             )
 
-        with open(config_path, encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8-sig") as f:
             cfg = json.load(f)
 
         return cls(

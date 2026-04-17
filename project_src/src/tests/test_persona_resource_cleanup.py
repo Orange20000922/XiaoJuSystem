@@ -1,8 +1,20 @@
 ﻿import sys
+import types
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+_project_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_project_root))
+
+_src_root = str(_project_root / "src")
+if "src" not in sys.modules:
+    _pkg = types.ModuleType("src")
+    _pkg.__path__ = [_src_root]
+    sys.modules["src"] = _pkg
+if "src.core" not in sys.modules:
+    _core = types.ModuleType("src.core")
+    _core.__path__ = [str(_project_root / "src" / "core")]
+    sys.modules["src.core"] = _core
 
 from src.core.persona_resource_cleanup import close_persona_resources, close_shared_memory_clients
 

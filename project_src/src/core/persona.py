@@ -30,7 +30,7 @@ from src.core.prompt_builder import PromptBuilder
 from src.memory.memory_manager import HierarchicalMemoryManager
 from src.core.emotion_state import EmotionStateTracker, EmotionState
 from src.attention.attention_tracker import AttentionTracker
-from src.vision.visual_perception import (
+from src.vision import (
     VisualAnalysis,
     VisualEvent,
     VisualPerceptionConfig,
@@ -147,6 +147,9 @@ class PersonaInstance:
         self.muti_persona_mode = False
         # 后台线程池
         self._bg_executor = ThreadPoolExecutor(max_workers=1)
+        # 视觉技能（按需注册）
+        self._visual_skill_detector = None
+        self._visual_skill_executor = None
 
     @classmethod
     def from_app_config(cls, infra: SharedInfra, config: "AppConfig") -> "PersonaInstance":
@@ -181,17 +184,42 @@ class PersonaInstance:
     def small_model(self):
         return self.infra.bert.model
 
+    def register_visual_skill(
+        self,
+        handler,
+    ):
+        """注册视觉技能处理器，启用按需视觉感知。"""
+        from src.vision.visual_skill import VisualSkillDetector, VisualSkillExecutor
+
+        self._visual_skill_detector = VisualSkillDetector()
+        self._visual_skill_executor = VisualSkillExecutor(handler)
+
+        if isinstance(self.memory, HierarchicalMemoryManager):
+            try:
+                self.memory.add_knowledge(
+                    "[能力] 小橘具有实时视觉感知能力。"
+                    "当用户询问关于视觉、画面、周围环境的问题时，"
+                    "系统会自动获取最近的画面分析结果并注入对话上下文。"
+                )
+                logger.info("视觉能力描述已写入 L4")
+            except Exception as exc:
+                logger.warning(f"视觉能力 L4 写入失败（不影响功能）: {exc}")
+
+        logger.info("视觉技能已注册")
+
     def handle_visual_event(self, event) -> Dict:
         """
-        在视觉事件决定是否进入聊天链路前，先处理它的副作用。
+        在视觉事件决定是否进入聊天链路前，先处理它对其他模块的影响。
 
-        当前副作用包括：
+        包括：
         - 作为弱刺激注入情绪状态机
-        - 按阈值将压缩后的视觉观察写入 L4
+        - 即时事件：按阈值将视觉观察写入 L4 知识库
+        - 非即时事件：额外写入 L3 用户级记忆
         """
         cfg = self.visual_perception_config
+        route_to_chat = bool(cfg.route_visual_events_to_chat)
         result = {
-            "route_to_chat": bool(cfg.route_visual_events_to_chat),
+            "route_to_chat": route_to_chat,
             "emotion_signal": None,
             "memory_written": False,
         }
@@ -233,6 +261,18 @@ class PersonaInstance:
                     f"peak={visual_event.peak_score:.3f}"
                 )
 
+                if not route_to_chat:
+                    try:
+                        self.memory.add_visual_observation_l3(
+                            memory_text,
+                            event_id=visual_event.event_id,
+                        )
+                        logger.debug(
+                            f"非即时视觉观察已写入 L3: event={visual_event.event_id}"
+                        )
+                    except Exception as exc:
+                        logger.warning(f"视觉观察 L3 写入失败: {exc}")
+
         return result
 
     def _visual_event_from_agent_event(self, event) -> VisualEvent:
@@ -241,6 +281,7 @@ class PersonaInstance:
         analysis = None
         if analysis_data:
             analysis = VisualAnalysis(
+                scene=str(analysis_data.get("scene", "")).strip(),
                 facts=list(analysis_data.get("facts", [])),
                 weak_interpretations=list(analysis_data.get("weak_interpretations", [])),
                 memory_candidate=str(analysis_data.get("memory_candidate", "")).strip(),
@@ -575,6 +616,7 @@ class PersonaInstance:
         user_id: Optional[int] = None,
         user_name: Optional[str] = None,
         context_id: Optional[str] = None,
+        visual_direct: bool = False,
     ) -> Dict:
         """完整对话流程（签名与原 NeuroLikePipeline.chat 完全兼容）"""
 
@@ -674,8 +716,23 @@ class PersonaInstance:
 
         # ── LLM 路由 + 生成 ──────────────────────────────────────────
 
+        # ── 视觉技能检测（按需获取画面分析注入上下文）────
+        if (
+            not visual_direct
+            and self._visual_skill_detector is not None
+            and self._visual_skill_executor is not None
+            and self._visual_skill_detector.detect(user_input)
+        ):
+            try:
+                visual_context = self._visual_skill_executor.execute(top_k=2)
+                if visual_context:
+                    user_input = f"[视觉感知] {visual_context}\n{user_input}"
+                    logger.info(f"视觉技能触发: {visual_context[:80]}...")
+            except Exception as exc:
+                logger.warning(f"视觉技能执行失败: {exc}")
+
         # ── 图片信息提取（vision → 描述 → 注入 user_input）────
-        if images and self.infra.llm_pool.vision is not None:
+        if images and self.infra.llm_pool.vision is not None and not visual_direct:
             try:
                 image_context = self._extract_image_context(images, user_input)
                 if image_context:

@@ -1,6 +1,6 @@
 # XiaoJu System
 
-小橘 AI 伙伴系统 — BERT 情绪感知 + 分级记忆 + LLM 人格对话 + 语音交互
+小橘 AI 伙伴系统 — BERT 情绪感知 + 分级记忆 + LLM 人格对话 + 动态视觉感知 + 语音交互
 
 小橘是一个由 Orange 创作的 AI 伙伴，具有独立人格、情绪感知和长期记忆能力。
 可用于 QQ 机器人私聊/群聊、个人博客看板娘等场景。
@@ -10,15 +10,16 @@
 ```
                   外部输入
                     |
-        +-----------+-----------+
-        v           v           v
-    用户消息    群聊消息流    语音输入(SenseVoice)
-        |           |           |
-        +-----------+-----------+
-                    v
-             +-----------+
-             | 事件队列  |   thread-safe Queue
-             +-----+-----+
+        +-----------+-----------+-----------+
+        v           v           v           v
+    用户消息    群聊消息流    语音输入      视频流
+        |           |       (SenseVoice)  (摄像头/文件)
+        |           |           |           |
+        +-----------+-----------+     +-----+-------+
+                    v                 |  视觉感知管线 |
+             +-----------+           |  (OpenCV +   |
+             | 事件队列  |   <----   |   GLM-4V)    |
+             +-----+-----+           +-------------+
                    |
     Agent 循环 (独立线程, 持续运行)
     +-------------------------------+
@@ -26,6 +27,7 @@
     |   +---------------------+    |
     |   |  collect_events()   |    |
     |   |  . 队列中的消息     |    |
+    |   |  . 视觉事件(push)   |    |
     |   |  . 空闲计时器       |    |
     |   |  . 时间段变化       |    |
     |   +----------+----------+    |
@@ -33,6 +35,7 @@
     |   +---------------------+    |
     |   |  decide()           |    |
     |   |  . 有消息 -> chat() |    |
+    |   |  . 视觉事件 -> 直出  |    |
     |   |  . 空闲超时 -> 主动说|    |
     |   |  . 都没有 -> 继续等  |    |
     |   +----------+----------+    |
@@ -80,13 +83,16 @@
 |                  v                                                   |
 |              文本回复                                                |
 |                  |                                                   |
-|                  v                                                   |
-|  +-------------------------------+                                  |
-|  |  语音合成 (CosyVoice, 可选)  |                                  |
-|  |  . zero-shot 音色克隆         |                                  |
-|  |  . 情绪参考音频切换           |                                  |
-|  |  . 优先级队列 + 播放控制      |                                  |
-|  +-------------------------------+                                  |
+|          +-------+-------+                                          |
+|          |               |                                          |
+|          v               v                                          |
+|  +---------------+  +-------------------------------+               |
+|  | 视觉技能注入  |  |  语音合成 (CosyVoice, 可选)  |               |
+|  | (pull 模式)   |  |  . zero-shot 音色克隆         |               |
+|  | 用户问"你看到 |  |  . 情绪参考音频切换           |               |
+|  |  什么" → 注入 |  |  . 优先级队列 + 播放控制      |               |
+|  | 最近画面分析  |  +-------------------------------+               |
+|  +---------------+                                                  |
 +----------------------------------------------------------------------+
 ```
 
@@ -182,7 +188,7 @@ gamma=0.25 由 **Extended Kalman Filter (EKF) 最大似然估计**从真实对�
 
 | 模式 | 默认 LLM | 说明 |
 |---|---|---|
-| `PRIVATE` | 主 LLM (Claude) | 私聊 / CLI，始终用高质量模型 |
+| `PRIVATE` | 主 LLM (Claude Opus) | 私聊 / CLI，始终用高质量模型 |
 | `GROUP` | 副 LLM (DeepSeek) | 群聊默认用廉价模型，BERT 路由决定是否升级 |
 
 群聊升级到主 LLM 的条件：
@@ -261,14 +267,68 @@ result = asr.transcribe("audio.wav")
 # result.emotion = "happy"  # 语音情感标签
 ```
 
+### 动态视觉感知
+
+基于 OpenCV 的实时视频流事件检测 + GLM-4V 云端多模态理解，采用分层策略：本地做轻量实时的感知与筛选，云端做深度语义化的理解。
+
+#### 视觉管线流程
+
+```
+视频流 → 帧采样(5fps) → 多通道显著度检测 → 时序峰值筛选 → 关键帧提取(clip mode)
+                                                                      |
+                                               +----------------------+
+                                               v
+                                    GLM-4V 结构化分析 (JSON)
+                                    scene / facts / agent_hint
+                                               |
+                              +----------------+----------------+
+                              v                                 v
+                    即时路径 (push)                     记忆路径
+                    GLM 直出人格回复                   L3 + L4 写入
+                    (keyframes + persona prompt)      压缩观察存入记忆
+```
+
+#### 显著度检测通道
+
+| 通道 | 方法 | 检测目标 |
+|------|------|---------|
+| 像素差分 | 帧间差分 + 形态学滤波 | 运动、物体进出画面 |
+| 结构变化 | SSIM 结构相似度 | 场景切换、光照突变 |
+| 光流密度 | Farneback 光流 | 大幅动作、手势 |
+| 人脸表情 | Haar 级联 + 表情变化 | 面部表情变化（可选） |
+
+各通道输出经 sigmoid 归一化后加权融合为综合显著度分数，通过 `TemporalPeakSelector` 时序峰值检测筛选出事件。
+
+#### 双路径响应模式
+
+**即时路径（visual_direct）**：GLM-4V 直接带着人格 prompt + 关键帧图片生成对话回复，跳过文本描述中间环节。回复仍经 BERT 情绪分析 → OU 状态机更新，完全复用现有情感设施。
+
+**技能调用（pull 模式）**：用户问"你看到什么"时，系统自动检测视觉请求意图（15 个中文关键词正则匹配），按需调用 `analyze_recent_buffer()` 获取最近画面分析结果注入对话上下文。
+
+```python
+# 注册视觉技能（启动时）
+persona.register_visual_skill(
+    handler=lambda top_k=2: vision_pipeline.analyze_recent_buffer(top_k=top_k),
+)
+
+# 之后用户说"你能看看我在做什么吗"时自动触发
+# user_input 变为: "[视觉感知] 人物坐在书桌前，手握杯子\n你能看看我在做什么吗？"
+```
+
+#### 延迟特性
+
+| 模式 | 延迟 | 适用场景 |
+|------|------|---------|
+| GLM 直出（8 帧） | ~18s | 低频高质量即时事件 |
+| 文本描述 + Claude | ~9s | 私聊高质量回复 |
+| 文本描述 + DeepSeek | ~2s | 高频/群聊实时响应 |
+
 ## 项目结构
 
 ```
-neuro_like_system/
-+-- config.json                # 主配置（API、人格、记忆、情绪映射、音频）
-+-- config_example_student.json # 数字学生配置模板（教育智能体比赛用）
+project_src/
++-- config.json                # 主配置（API、人格、记忆、情绪映射、音频、视觉）
 +-- configs/
-|   +-- __init__.py
 |   +-- config_loader.py       # config.json -> AppConfig 加载器
 |   +-- model_config.py        # 数据类定义（LLMConfig, MemoryConfig 等）
 |
@@ -279,26 +339,52 @@ neuro_like_system/
 |   +-- annotation_model.py    # 标注模型（知识蒸馏）
 |
 +-- src/
-|   +-- inference_pipeline.py  # 核心：LLMClient + NeuroLikePipeline
-|   +-- agent_loop.py          # Agent 事件循环（AgentLoop + AgentEvent）
-|   +-- memory_manager.py      # 分级记忆管理器（L1-L4, Mem0, Qdrant）
-|   +-- audio_pipeline.py      # TTS 语音合成管道（CosyVoice）
-|   +-- speech_recognition.py  # ASR 语音识别（SenseVoice）
-|   +-- qq_adapter.py          # QQ 机器人适配层（OneBot v11 WebSocket）
-|   +-- image_utils.py         # 图片处理工具（下载/验证/缩放/base64/缓存）
-|   +-- emotion_fusion.py      # BERT + LLM 双信号情绪融合
-|   +-- emotion_state.py       # 情绪状态机（OU 过程, valence-arousal 二维连续状态）
-|   +-- ekf_tuner.py            # EKF 参数辨识工具（情绪状态机参数估计）
-|   +-- attention_tracker.py    # 群聊注意力追踪器
-|   +-- proactive_decision.py  # 主动决策模块
-|   +-- logger.py              # loguru 日志配置
-|   +-- content_filter.py      # 内容过滤器（敏感词清洗）
-|   +-- quick_test.py          # 测试脚本（多模式）
-|   +-- run_qq_bot.py          # QQ 机器人启动入口
-|   +-- export_onnx.py         # ONNX 导出
+|   +-- core/
+|   |   +-- inference_pipeline.py  # 核心：LLMClient + NeuroLikePipeline
+|   |   +-- persona.py             # 人格实例（对话、情绪、记忆、视觉技能）
+|   |   +-- prompt_builder.py      # System Prompt 组装
+|   |   +-- shared_infra.py        # 共享基础设施（LLM 池、小模型、记忆）
+|   |   +-- small_model.py         # BERT 小模型推理
+|   |   +-- emotion_state.py       # 情绪状态机（OU 过程）
+|   |   +-- emotion_fusion.py      # BERT + LLM 情绪融合
+|   |   +-- scheduler.py           # 定时任务调度
+|   |
+|   +-- agent/
+|   |   +-- agent_loop.py          # Agent 事件循环（AgentLoop + AgentEvent）
+|   |
+|   +-- memory/
+|   |   +-- memory_manager.py      # 分级记忆管理器（L1-L4, Mem0, Qdrant）
+|   |
+|   +-- llm/
+|   |   +-- client.py              # 多提供商 LLM 客户端（Anthropic/OpenAI 兼容）
+|   |
+|   +-- vision/
+|   |   +-- visual_perception.py   # 视觉感知主模块（检测、事件、配置）
+|   |   +-- visual_pipeline.py     # 视觉管线编排（采集→检测→分析）
+|   |   +-- visual_monitor.py      # 实时监控器（帧缓冲、峰值检测）
+|   |   +-- visual_analysis.py     # GLM-4V 结构化分析
+|   |   +-- visual_agent.py        # VisualEvent ↔ AgentEvent 桥接
+|   |   +-- visual_skill.py        # 视觉技能检测器 + 执行器（pull 模式）
+|   |   +-- visual_semantics.py    # 语义工具（情绪信号、记忆文本）
+|   |   +-- visual_text.py         # 文本格式化（agent_text、memory_text）
+|   |   +-- visual_types.py        # 数据类型定义
+|   |   +-- _shared.py             # 共享常量与工具
+|   |
+|   +-- adapters/
+|   |   +-- qq_adapter.py          # QQ 机器人适配层（OneBot v11 WebSocket）
+|   |
+|   +-- media/
+|   |   +-- audio_pipeline.py      # TTS 语音合成管道（CosyVoice）
+|   |   +-- speech_recognition.py  # ASR 语音识别（SenseVoice）
+|   |   +-- image_utils.py         # 图片处理工具（下载/验证/缩放/base64/缓存）
+|   |
+|   +-- attention/
+|   |   +-- attention_tracker.py   # 群聊注意力追踪器
+|   |
+|   +-- tests/                     # 单元测试
+|   +-- tools/                     # 集成测试 / 工具脚本
 |
 +-- data/
-|   +-- dataset.py             # PyTorch Dataset 定义
 |   +-- qdrant_db/             # Qdrant 向量数据库（L3 持久化）
 |   +-- audio_refs/            # TTS 参考音频
 |   +-- image_cache/           # 图片缓存
@@ -306,7 +392,7 @@ neuro_like_system/
 +-- checkpoints/
 |   +-- joint_model/best.pt    # BERT 联合模型检查点
 |
-+-- docs/                      # 设计文档
++-- docs/                      # 设计文档与变更日志
 +-- logs/                      # 运行日志
 +-- requirements.txt
 ```
@@ -319,7 +405,7 @@ neuro_like_system/
 {
   "llm": {
     "provider": "anthropic",       // 主 LLM：私聊 + 群聊升级
-    "model": "claude-sonnet-4-6",
+    "model": "claude-opus-4-6",
     "api_key": "...",
     "base_url": "https://...",     // 支持第三方代理
     "max_tokens": 10000,           // 自适应 max_tokens 的基准值
@@ -385,6 +471,23 @@ neuro_like_system/
     "proactive_level": "off",
     "idle_threshold_seconds": 300,
     "time_awareness": true
+  },
+
+  "visual_perception": {
+    "enabled": true,
+    "source": "camera",                 // "camera" | "file"
+    "sample_fps": 5,                    // 帧采样率
+    "clip_duration_seconds": 2.0,       // 事件 clip 时长
+    "clip_max_frames": 8,               // clip 内最大关键帧数
+    "vision_analysis_mode": "per_event", // "per_event" | "batch"
+    "vision_calls_per_minute": 5,       // GLM API 调用频率限制
+    "persist_to_memory": true,          // 非即时事件写入 L3/L4
+    "channel_weights": {
+      "pixel_diff": 0.35,
+      "structural": 0.25,
+      "optical_flow": 0.25,
+      "face": 0.15
+    }
   }
 }
 ```
@@ -501,11 +604,14 @@ python src/inference_pipeline.py --config config.json
 - [x] 图片识别（GLM-4V 多模态）
 - [x] 情绪状态机（OU 过程 + EKF 参数辨识 + 动态 Prompt Hint）
 - [x] BERT + LLM 情绪融合（单神经元 softmax + reliability 加权）
+- [x] 动态视觉感知管线（OpenCV 多通道显著度检测 + GLM-4V 云端分析）
+- [x] 视觉直出响应（GLM-4V 带人格 prompt + 关键帧直接生成对话回复）
+- [x] 视觉技能调用（pull 模式，用户请求时按需获取画面分析）
 - [ ] CosyVoice TTS 语音合成集成到 AgentLoop
 - [ ] SenseVoice ASR 语音识别集成到 AgentLoop
+- [ ] 自适应帧采样密度（根据显著度动态调节采样率）
 - [ ] Live2D 渲染 + 口型同步
 - [ ] 个人博客看板娘前端
-- [ ] Pipeline 拆分（EmotionAnalyzer / PromptBuilder / LLMRouter / ResponseGenerator）
 - [ ] 本地 LLM 替代 API（Qwen2-7B 蒸馏）
 
 ## License

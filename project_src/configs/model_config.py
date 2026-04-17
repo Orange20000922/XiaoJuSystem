@@ -606,6 +606,7 @@ class ImageConfig:
 class VisualPerceptionSettings:
     """动态视觉感知配置。"""
     enabled: bool = False
+    vision_analysis_mode: str = "triggered"  # "none" | "triggered" | "per_event"
     resize_width: int = 320
     gaussian_kernel_size: int = 5
     mog2_history: int = 500
@@ -628,6 +629,8 @@ class VisualPerceptionSettings:
     observation_queue_size: int = 32
     event_queue_size: int = 16
     vision_calls_per_minute: int = 2
+    vision_rate_limit_wait_for_file_source: bool = True
+    vision_rate_limit_max_wait_seconds: float = 90.0
     area_sigmoid_center: float = 0.02
     area_sigmoid_scale: float = 0.01
     histogram_sigmoid_center: float = 0.08
@@ -640,8 +643,35 @@ class VisualPerceptionSettings:
     route_visual_events_to_chat: bool = True
     inject_to_emotion_state: bool = True
     persist_to_memory: bool = True
+    weak_monitor_buffer_seconds: float = 30.0
+    segment_merge_gap_seconds: float = 2.0
+    trigger_analysis_enabled: bool = True
+    trigger_window_seconds: float = 10.0
+    trigger_accumulated_score_threshold: float = 1.2
+    trigger_peak_score_threshold: float = 0.35
+    trigger_min_strong_events: int = 2
+    trigger_refractory_seconds: float = 8.0
+    explicit_request_top_k: int = 2
+    summary_enabled: bool = True
+    summary_window_seconds: float = 30.0
+    summary_top_k: int = 3
     visual_emotion_scale: float = 0.2         # 视觉弱刺激注入情绪状态机时的缩放系数
     memory_peak_score_threshold: float = 0.22 # 写入长期记忆的最低峰值分数
+    clip_duration_seconds: float = 0.0        # 事件视频片段时长（秒），0=单帧模式
+    clip_max_frames: int = 8                  # 片段模式下最多采样帧数
+    # ── 自适应帧采样（FFT 频域驱动） ──
+    adaptive_sampling_enabled: bool = False
+    adaptive_stft_window_size: int = 32
+    adaptive_stft_hop_size: int = 4
+    adaptive_highfreq_cutoff_ratio: float = 0.3
+    adaptive_fps_min: float = 4.0
+    adaptive_fps_max: float = 15.0
+    adaptive_gamma: float = 0.7
+    adaptive_spike_threshold: float = 0.4
+    adaptive_spike_boost_seconds: float = 2.0
+    adaptive_fps_smoothing_alpha: float = 0.3
+    adaptive_precheck_diff_threshold: float = 15.0
+    adaptive_precheck_resize_width: int = 160
 
 
 

@@ -58,15 +58,20 @@ from src.media.image_utils import (
     PILLOW_AVAILABLE,
 )
 
-from src.vision.visual_perception import (
+from src.vision import (
     CV2_AVAILABLE,
     VisualPerceptionConfig,
     VisualPerceptionPipeline,
     VisualEvent,
     VisualAnalysis,
+    VisualEventCluster,
+    VisualWindowSummary,
+    VisualEventMonitor,
     build_visual_analyzer_from_pipeline,
+    cluster_visual_events,
     derive_visual_emotion_signal,
     push_visual_event_to_agent_loop,
+    summarize_visual_event_windows,
     visual_event_memory_text,
     visual_event_to_agent_event,
 )
@@ -118,9 +123,14 @@ __all__ = [
     "VisualPerceptionPipeline",
     "VisualEvent",
     "VisualAnalysis",
+    "VisualEventCluster",
+    "VisualWindowSummary",
+    "VisualEventMonitor",
     "build_visual_analyzer_from_pipeline",
+    "cluster_visual_events",
     "derive_visual_emotion_signal",
     "push_visual_event_to_agent_loop",
+    "summarize_visual_event_windows",
     "visual_event_memory_text",
     "visual_event_to_agent_event",
     # Logger

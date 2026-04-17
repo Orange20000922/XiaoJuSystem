@@ -352,6 +352,16 @@ class HierarchicalMemoryManager:
             prefix = f"{prefix}[{event_id}]"
         self.add_knowledge(f"{prefix} {content}")
 
+    def add_visual_observation_l3(self, content: str, event_id: Optional[str] = None):
+        """将视觉观察写入 L3 用户级记忆（非即时事件）。"""
+        prefix = "[视觉观察]"
+        if event_id:
+            prefix = f"{prefix}[{event_id}]"
+        self.mem0.add(
+            [{"role": "assistant", "content": f"{prefix} {content}"}],
+            user_id=self.user_id,
+        )
+
     def build_user_profile_l4(
         self,
         intensity_threshold: float = 0.6,

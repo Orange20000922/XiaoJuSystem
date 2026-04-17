@@ -1,8 +1,25 @@
-﻿import sys
+﻿import logging
+import sys
+import types
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+_project_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_project_root))
+
+_src_root = str(_project_root / "src")
+if "src" not in sys.modules:
+    _pkg = types.ModuleType("src")
+    _pkg.__path__ = [_src_root]
+    sys.modules["src"] = _pkg
+if "src.logger" not in sys.modules:
+    _logger_mod = types.ModuleType("src.logger")
+    _logger_mod.logger = logging.getLogger("test_stub")
+    sys.modules["src.logger"] = _logger_mod
+if "src.media" not in sys.modules:
+    _media = types.ModuleType("src.media")
+    _media.__path__ = [str(_project_root / "src" / "media")]
+    sys.modules["src.media"] = _media
 
 from configs.config_loader import load_audio_config
 from src.media.audio_pipeline import AudioConfig, AudioPipeline, _normalize_tts_provider

@@ -206,6 +206,9 @@ class AgentLoop:
         # 未被 @ 时使用配置默认值（None 会让 chat() 自动读取 config.use_by_default）
         use_fusion = True if (event.chat_mode == ChatMode.GROUP and event.is_mentioned) else None
 
+        # 视觉事件且携带关键帧 → 直出模式（GLM 直接带人格 prompt + 关键帧生成回复）
+        visual_direct = event.type == "visual" and bool(event.images)
+
         try:
             result = self.pipeline.chat(
                 event.content,
@@ -216,6 +219,7 @@ class AgentLoop:
                 user_id=event.user_id,
                 user_name=event.user_name,
                 context_id=event.context_id,
+                visual_direct=visual_direct,
             )
 
             if result["should_respond"] and result["response"]:
