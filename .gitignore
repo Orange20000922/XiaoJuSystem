@@ -34,8 +34,8 @@ wandb/
 .tensorboard/
 experiment_results/
 *.onnx
-# docs
-project_src/docs/
+# development notes
+project_src/dev_notes/
 # Output data (crawler results)
 output/
 # ONNX Runtime libraries (download locally)
