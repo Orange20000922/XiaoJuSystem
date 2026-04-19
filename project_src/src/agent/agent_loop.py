@@ -17,14 +17,15 @@ import gc
 import json
 import time
 import logging
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from queue import Queue, Empty
-from threading import Thread, Event
-from typing import Callable, List, Dict, Optional
-
+from threading import Thread, Event, Lock
+from typing import Callable, Deque, List, Dict, Optional
+from datetime import datetime
 import sys
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -56,7 +57,7 @@ class AgentEvent:
     user_id: Optional[int] = None                      # 用户 QQ 号（群聊注意力追踪）
     user_name: Optional[str] = None                    # 用户昵称（群聊注意力追踪）
     context_id: Optional[str] = None                   # 对话上下文标识（群号/私聊用户ID）
-
+    
 
 class AgentLoop:
     """
@@ -85,7 +86,10 @@ class AgentLoop:
         self.proactive_state = ProactiveState.NORMAL
         self._stop_event = Event()
         self._thread: Optional[Thread] = None
-
+        self._last_save_date = None  # 记录上次写入长期记忆的日期
+        self._chat_dispatch_lock = Lock()
+        self._pending_chat_events: Dict[str, Deque[AgentEvent]] = {}
+        self._active_chat_contexts: set[str] = set()
         # 并发聊天线程池：每个 persona 最多同时处理 N 条消息
         self._chat_pool = ThreadPoolExecutor(
             max_workers=config.max_concurrent_chats,
@@ -150,7 +154,27 @@ class AgentLoop:
         self.event_queue.put(event)
 
     # ── 内部方法 ──────────────────────────────────────────────────────────
+    def _save_memory_to_L3_by_time(self):
+        """定时将工作记忆写入 L3 长期记忆"""
+        now = datetime.now()
+        if self._last_save_date == now.date():
+            return
 
+        # 只要已经跨过当天 03:00，就在首次 tick 时执行
+        if (now.hour, now.minute) < (3, 0):
+            return
+
+        if self._has_pending_chat_work():
+            return
+
+        try:
+            if hasattr(self.pipeline.memory, "close_session"):
+                self.pipeline.memory.close_session()
+                self._last_save_date = now.date()
+                logger.info("已按计划将工作记忆写入 L3 长期记忆")
+        except Exception as e:
+            logger.warning(f"写入 L3 长期记忆失败: {e}")
+    
     def _loop(self):
         """事件循环主体（在独立线程运行）"""
         last_cleanup_time = time.time()
@@ -178,13 +202,64 @@ class AgentLoop:
                     last_cleanup_time = now
             except Exception as e:
                 logger.error(f"Agent 循环异常（已恢复）: {e}", exc_info=True)
-
+            # 每天定时将工作记忆写入 L3 长期记忆
+            self._save_memory_to_L3_by_time()
+    
     def _poll_event(self) -> Optional[AgentEvent]:
         """从队列取事件，带 timeout"""
         try:
             return self.event_queue.get(timeout=self.config.tick_interval)
         except Empty:
             return None
+
+    def _has_pending_chat_work(self) -> bool:
+        """检查是否仍有待处理或进行中的聊天任务。"""
+        if not self.event_queue.empty():
+            return True
+
+        with self._chat_dispatch_lock:
+            return bool(self._active_chat_contexts)
+
+    @staticmethod
+    def _context_queue_key(event: AgentEvent) -> str:
+        """将同一上下文的消息固定路由到同一串行队列。"""
+        if event.context_id:
+            return event.context_id
+        return f"__fallback__:{event.type}:{event.chat_mode.value}"
+
+    def _dispatch_chat_event(self, event: AgentEvent):
+        """按 context_id 串行、跨 context 并行地调度聊天任务。"""
+        context_key = self._context_queue_key(event)
+        should_start_worker = False
+
+        with self._chat_dispatch_lock:
+            queue = self._pending_chat_events.setdefault(context_key, deque())
+            queue.append(event)
+            if context_key not in self._active_chat_contexts:
+                self._active_chat_contexts.add(context_key)
+                should_start_worker = True
+
+        if should_start_worker:
+            self._chat_pool.submit(self._drain_chat_context, context_key)
+
+    def _drain_chat_context(self, context_key: str):
+        """串行处理单个上下文中的所有待处理消息。"""
+        while True:
+            with self._chat_dispatch_lock:
+                queue = self._pending_chat_events.get(context_key)
+                if not queue:
+                    self._pending_chat_events.pop(context_key, None)
+                    self._active_chat_contexts.discard(context_key)
+                    return
+                event = queue.popleft()
+
+            try:
+                self._process_chat(event)
+            except Exception as e:
+                logger.error(
+                    f"处理上下文消息失败: context={context_key} error={e}",
+                    exc_info=True,
+                )
 
     def _handle_message(self, event: AgentEvent):
         """处理用户消息事件：提交到线程池，不阻塞事件循环"""
@@ -195,8 +270,7 @@ class AgentLoop:
             logger.info(f"收到用户消息，状态从 {self.proactive_state.value} 重置为 normal")
             self.proactive_state = ProactiveState.NORMAL
 
-        # 提交到线程池，不再阻塞事件循环
-        self._chat_pool.submit(self._process_chat, event)
+        self._dispatch_chat_event(event)
 
     def _process_chat(self, event: AgentEvent):
         """在线程池线程中执行聊天处理"""
@@ -264,7 +338,7 @@ class AgentLoop:
                 logger.error(f"视觉事件预处理失败: {e}", exc_info=True)
 
         if should_route_to_chat:
-            self._chat_pool.submit(self._process_chat, event)
+            self._dispatch_chat_event(event)
 
     def _check_proactive_triggers(self):
         """根据 proactive_level 和状态机检查是否需要主动发言"""

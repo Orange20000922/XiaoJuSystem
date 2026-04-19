@@ -620,22 +620,13 @@ class PersonaInstance:
     ) -> Dict:
         """完整对话流程（签名与原 NeuroLikePipeline.chat 完全兼容）"""
 
-        # ── 群聊注意力追踪 ─────────────────────────────────────────────
-        if chat_mode == ChatMode.GROUP and user_id is not None:
-            logger.debug(
-                f"[注意力追踪] 记录消息: user_id={user_id} "
-                f"user_name={user_name} is_mentioned={is_mentioned}"
-            )
-            self.attention_tracker.on_message(
-                user_id=user_id,
-                user_name=user_name or str(user_id),
-                is_mentioned=is_mentioned,
-            )
-
         # ── 注意力焦点判断 ────────────────────────────────────────────
         in_attention_focus = False
         if chat_mode == ChatMode.GROUP and not is_mentioned and user_id is not None:
-            user = self.attention_tracker.users.get(user_id)
+            user = self.attention_tracker.get_user_attention(
+                user_id=user_id,
+                context_key=context_id,
+            )
             in_attention_focus = (
                 user is not None
                 and self.attention_config.track_mentioned_users
@@ -707,9 +698,22 @@ class PersonaInstance:
                 behavior_type=behavior_type,
                 is_mentioned=is_mentioned,
                 in_attention_focus=in_attention_focus,
+                context_key=context_id,
             )
         else:
             respond = self.should_respond(emotion_behavior, is_mentioned)
+
+        if chat_mode == ChatMode.GROUP and user_id is not None:
+            logger.debug(
+                f"[注意力追踪] 记录消息: user_id={user_id} "
+                f"user_name={user_name} is_mentioned={is_mentioned}"
+            )
+            self.attention_tracker.on_message(
+                user_id=user_id,
+                user_name=user_name or str(user_id),
+                is_mentioned=is_mentioned,
+                context_key=context_id,
+            )
 
         if not respond:
             logger.debug("注意力判断：跳过回复，仅记录记忆")
@@ -815,7 +819,7 @@ class PersonaInstance:
             self.memory.add(turn)
 
             if chat_mode == ChatMode.GROUP and user_id is not None:
-                self.attention_tracker.on_reply(user_id)
+                self.attention_tracker.on_reply(user_id, context_key=context_id)
 
         result = {
             "response": response,

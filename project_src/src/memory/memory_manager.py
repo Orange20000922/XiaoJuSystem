@@ -112,11 +112,15 @@ class HierarchicalMemoryManager:
         self.config = config
         self.llm_client = llm_client
         self.user_id = user_id or config.user_id or "owner"
-        self.session_id = f"session_{int(time.time())}"
+        self.session_id = self._new_session_id()
 
         # L1
         self.working_memory: List["ConversationTurn"] = []
         self._l1_tokens: int = 0
+        self._memory_lock = threading.RLock()
+        self._turn_seq_counter: int = 0
+        self._last_flushed_turn_seq: int = 0
+        self._compressed_run_ids: List[str] = []
 
         # 最近一次 BERT 分类的行为标签，由外部（Pipeline）在 add() 前设置
         self.last_behavior: str = ""
@@ -188,6 +192,17 @@ class HierarchicalMemoryManager:
 
         self.mem0 = _shared_mem0
 
+    def _new_session_id(self) -> str:
+        return f"session_{time.time_ns()}"
+
+    def _assign_turn_seq(self, turn: "ConversationTurn") -> int:
+        self._turn_seq_counter += 1
+        setattr(turn, "_memory_seq", self._turn_seq_counter)
+        return self._turn_seq_counter
+
+    def _turn_seq(self, turn: "ConversationTurn") -> int:
+        return int(getattr(turn, "_memory_seq", 0))
+
     # ── L1 操作 ──────────────────────────────────────────────────────────
 
     def add(self, turn: "ConversationTurn"):
@@ -196,22 +211,24 @@ class HierarchicalMemoryManager:
           1. token 达到阈值（硬性触发）
           2. BERT 检测到话题边界且 token 超过最低占比（软性触发）
         """
-        self.working_memory.append(turn)
-        self._l1_tokens += count_tokens(turn_to_text(turn))
+        with self._memory_lock:
+            self._assign_turn_seq(turn)
+            self.working_memory.append(turn)
+            self._l1_tokens += count_tokens(turn_to_text(turn))
 
-        token_pressure = self._l1_tokens >= self.config.compression_trigger_tokens
+            token_pressure = self._l1_tokens >= self.config.compression_trigger_tokens
 
-        boundary_trigger = (
-            turn.behavior == "change_topic"
-            and self._l1_tokens >= int(
-                self.config.context_window_tokens * self.BOUNDARY_MIN_THRESHOLD
+            boundary_trigger = (
+                turn.behavior == "change_topic"
+                and self._l1_tokens >= int(
+                    self.config.context_window_tokens * self.BOUNDARY_MIN_THRESHOLD
+                )
+                # 保护区内的话题切换不触发（轮次太少压缩没意义）
+                and len(self.working_memory) > self.PROTECTED_TURNS + 2
             )
-            # 保护区内的话题切换不触发（轮次太少压缩没意义）
-            and len(self.working_memory) > self.PROTECTED_TURNS + 2
-        )
 
-        if token_pressure or boundary_trigger:
-            self._compress_l1_to_l2()
+            if token_pressure or boundary_trigger:
+                self._compress_l1_to_l2()
 
     def _compress_l1_to_l2(self):
         """
@@ -219,52 +236,57 @@ class HierarchicalMemoryManager:
           - 保护区（最近 PROTECTED_TURNS 轮）原文保留，永不触碰
           - 可压缩区做结构化状态提取，而非叙述性摘要
         """
-        n = len(self.working_memory)
-        compressible_end = max(0, n - self.PROTECTED_TURNS)
+        with self._memory_lock:
+            n = len(self.working_memory)
+            compressible_end = max(0, n - self.PROTECTED_TURNS)
 
-        if compressible_end == 0:
-            # 全部在保护区内，无可压缩内容
-            return
+            if compressible_end == 0:
+                # 全部在保护区内，无可压缩内容
+                return
 
-        # 取可压缩区中最旧的 compression_ratio 部分
-        cut = max(1, int(compressible_end * self.config.compression_ratio))
-        to_compress = self.working_memory[:cut]
+            # 取可压缩区中最旧的 compression_ratio 部分
+            cut = max(1, int(compressible_end * self.config.compression_ratio))
+            to_compress = self.working_memory[:cut]
 
-        history_text = "".join(turn_to_text(t) for t in to_compress)
+            history_text = "".join(turn_to_text(t) for t in to_compress)
+            run_id = self.session_id
 
-        raw = self.llm_client.generate(
-            system_prompt=_STATE_EXTRACTION_PROMPT,
-            user_input=history_text,
-            max_tokens=500,
-            temperature=0.1,
-        )
+            raw = self.llm_client.generate(
+                system_prompt=_STATE_EXTRACTION_PROMPT,
+                user_input=history_text,
+                max_tokens=500,
+                temperature=0.1,
+            )
 
-        # 尝试解析为 JSON，失败时原文存储（保底）
-        try:
-            state = json.loads(raw)
-            content = f"[状态快照] {json.dumps(state, ensure_ascii=False)}"
-        except json.JSONDecodeError:
-            content = f"[状态快照] {raw}"
+            # 尝试解析为 JSON，失败时原文存储（保底）
+            try:
+                state = json.loads(raw)
+                content = f"[状态快照] {json.dumps(state, ensure_ascii=False)}"
+            except json.JSONDecodeError:
+                content = f"[状态快照] {raw}"
 
-        self.mem0.add(
-            [{"role": "assistant", "content": content}],
-            user_id=self.user_id,
-            run_id=self.session_id,
-        )
+            self.mem0.add(
+                [{"role": "assistant", "content": content}],
+                user_id=self.user_id,
+                run_id=run_id,
+            )
 
-        removed_tokens = sum(count_tokens(turn_to_text(t)) for t in to_compress)
-        self.working_memory = self.working_memory[cut:]
-        self._l1_tokens = max(0, self._l1_tokens - removed_tokens)
+            if not self._compressed_run_ids or self._compressed_run_ids[-1] != run_id:
+                self._compressed_run_ids.append(run_id)
 
-        # 重置 session（压缩后开始新会话，避免 messages 数组累积）
-        old_session = self.session_id
-        self.session_id = f"session_{int(time.time())}"
-        from src.logger import logger
-        logger.info(
-            f"L1 压缩完成：移除 {len(to_compress)} 轮 ({removed_tokens} tokens)，"
-            f"保留 {len(self.working_memory)} 轮 ({self._l1_tokens} tokens)，"
-            f"session 重置 {old_session[-8:]} → {self.session_id[-8:]}"
-        )
+            removed_tokens = sum(count_tokens(turn_to_text(t)) for t in to_compress)
+            self.working_memory = self.working_memory[cut:]
+            self._l1_tokens = max(0, self._l1_tokens - removed_tokens)
+
+            # 压缩后切换 run_id，避免后续 L2 继续写到已封存的 session。
+            old_session = self.session_id
+            self.session_id = self._new_session_id()
+            from src.logger import logger
+            logger.info(
+                f"L1 压缩完成：移除 {len(to_compress)} 轮 ({removed_tokens} tokens)，"
+                f"保留 {len(self.working_memory)} 轮 ({self._l1_tokens} tokens)，"
+                f"session 重置 {old_session[-8:]} → {self.session_id[-8:]}"
+            )
 
     # ── L2 → L3 会话结束 ─────────────────────────────────────────────────
 
@@ -276,64 +298,99 @@ class HierarchicalMemoryManager:
         """
         from src.logger import logger
 
-        # 保护区最近几轮原文写入 L3，保证下次 session 能召回最近对话细节
-        # 策略 A：在每轮前附加情绪标签，供 L4 画像构建时过滤
-        protected = self.working_memory[-self.PROTECTED_TURNS:]
-        logger.info(f"close_session: protected turns={len(protected)}")
-        if protected:
-            lines = []
-            for t in protected:
-                tag = f"[emotion={t.emotion},intensity={t.intensity:.2f}]" if t.emotion else ""
-                lines.append(f"{tag} {turn_to_text(t)}")
-            recent = "\n".join(lines)
-            logger.info(f"close_session: writing {len(recent)} chars to L3 with emotion tags")
-            self.mem0.add(
-                [{"role": "assistant", "content": f"[最近对话] {recent}"}],
-                user_id=self.user_id,
+        with self._memory_lock:
+            # 仅把上次 flush 之后新增的保护区轮次写入 L3，避免定时 flush + stop() 重复写。
+            protected = [
+                t for t in self.working_memory[-self.PROTECTED_TURNS:]
+                if self._turn_seq(t) > self._last_flushed_turn_seq
+            ]
+            pending_recent = bool(protected)
+            logger.info(
+                f"close_session: protected turns={len(self.working_memory[-self.PROTECTED_TURNS:])}, "
+                f"pending_recent={len(protected)}"
             )
-            logger.info("close_session: L3 write done")
+            if protected:
+                lines = []
+                for t in protected:
+                    tag = (
+                        f"[emotion={t.emotion},intensity={t.intensity:.2f}]"
+                        if t.emotion else ""
+                    )
+                    lines.append(f"{tag} {turn_to_text(t)}")
+                recent = "\n".join(lines)
+                logger.info(
+                    f"close_session: writing {len(recent)} chars to L3 with emotion tags"
+                )
+                self.mem0.add(
+                    [{"role": "assistant", "content": f"[最近对话] {recent}"}],
+                    user_id=self.user_id,
+                )
+                self._last_flushed_turn_seq = max(
+                    self._last_flushed_turn_seq,
+                    max(self._turn_seq(t) for t in protected),
+                )
+                logger.info("close_session: L3 write done")
 
-        # 压缩剩余可压缩区
-        n = len(self.working_memory)
-        compressible_end = max(0, n - self.PROTECTED_TURNS)
-        if compressible_end > 0:
-            self._compress_l1_to_l2()
+            # 压缩剩余可压缩区，把当前逻辑 session 内所有 L2 状态都归档到 L3。
+            n = len(self.working_memory)
+            compressible_end = max(0, n - self.PROTECTED_TURNS)
+            if compressible_end > 0:
+                self._compress_l1_to_l2()
 
-        session_mems = self.mem0.get_all(
-            user_id=self.user_id,
-            run_id=self.session_id,
-        )
-        if not session_mems or not session_mems.get("results"):
-            return
+            run_ids = tuple(self._compressed_run_ids)
+            pending_states = bool(run_ids)
+            if not pending_recent and not pending_states:
+                logger.info("close_session: no new L1/L2 content pending, skip")
+                return
 
-        all_states = "\n".join(r["memory"] for r in session_mems["results"])
+            all_state_texts = []
+            for run_id in run_ids:
+                session_mems = self.mem0.get_all(
+                    user_id=self.user_id,
+                    run_id=run_id,
+                )
+                if not session_mems or not session_mems.get("results"):
+                    continue
+                all_state_texts.extend(
+                    r["memory"] for r in session_mems["results"] if "memory" in r
+                )
 
-        raw_facts = self.llm_client.generate(
-            system_prompt=_FACT_EXTRACTION_PROMPT,
-            user_input=all_states,
-            max_tokens=400,
-            temperature=0.1,
-        )
+            if all_state_texts:
+                all_states = "\n".join(all_state_texts)
 
-        try:
-            facts = json.loads(raw_facts)
-            content = "\n".join(f"- {f}" for f in facts if isinstance(f, str))
-        except json.JSONDecodeError:
-            content = raw_facts
+                raw_facts = self.llm_client.generate(
+                    system_prompt=_FACT_EXTRACTION_PROMPT,
+                    user_input=all_states,
+                    max_tokens=400,
+                    temperature=0.1,
+                )
 
-        if content.strip():
-            self.mem0.add(
-                [{"role": "assistant", "content": content}],
-                user_id=self.user_id,  # 无 session_id → L3 持久化
+                try:
+                    facts = json.loads(raw_facts)
+                    content = "\n".join(f"- {f}" for f in facts if isinstance(f, str))
+                except json.JSONDecodeError:
+                    content = raw_facts
+
+                if content.strip():
+                    self.mem0.add(
+                        [{"role": "assistant", "content": content}],
+                        user_id=self.user_id,  # 无 session_id → L3 持久化
+                    )
+
+            # L4 用户画像构建（基于本次 session 写入的 L3 强情绪片段）
+            try:
+                logger.info("close_session: triggering L4 profile build...")
+                self.build_user_profile_l4()
+                logger.info("close_session: L4 profile build done")
+            except Exception as e:
+                logger.warning(f"L4 画像构建失败（不影响主流程）: {e}")
+
+            self._compressed_run_ids.clear()
+            old_session = self.session_id
+            self.session_id = self._new_session_id()
+            logger.info(
+                f"close_session: session rolled over {old_session[-8:]} → {self.session_id[-8:]}"
             )
-
-        # L4 用户画像构建（基于本次 session 写入的 L3 强情绪片段）
-        try:
-            logger.info("close_session: triggering L4 profile build...")
-            self.build_user_profile_l4()
-            logger.info("close_session: L4 profile build done")
-        except Exception as e:
-            logger.warning(f"L4 画像构建失败（不影响主流程）: {e}")
 
     # ── L4 显式写入 ───────────────────────────────────────────────────────
 
@@ -485,16 +542,22 @@ class HierarchicalMemoryManager:
         """
         from concurrent.futures import ThreadPoolExecutor
 
+        with self._memory_lock:
+            l2_run_ids = tuple(self._compressed_run_ids) or (self.session_id,)
+
         sections = []
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            f_l2 = executor.submit(
-                self.mem0.search,
-                query=query,
-                user_id=self.user_id,
-                run_id=self.session_id,
-                limit=self.config.l3_search_limit,
-            )
+        with ThreadPoolExecutor(max_workers=2 + len(l2_run_ids)) as executor:
+            l2_futures = [
+                executor.submit(
+                    self.mem0.search,
+                    query=query,
+                    user_id=self.user_id,
+                    run_id=run_id,
+                    limit=self.config.l3_search_limit,
+                )
+                for run_id in l2_run_ids
+            ]
             f_l3 = executor.submit(
                 self.mem0.search,
                 query=query,
@@ -508,11 +571,11 @@ class HierarchicalMemoryManager:
                 agent_id="neuro_agent",
                 limit=self.config.l4_search_limit,
             )
-            l2 = f_l2.result()
+            l2_results = [future.result() for future in l2_futures]
             l3 = f_l3.result()
             l4 = f_l4.result()
 
-        combined = self._merge(l2, l3)
+        combined = self._merge(*l2_results, l3)
         if combined:
             sections.append(
                 "<history>" + "|".join(combined) + "</history>"
@@ -543,8 +606,11 @@ class HierarchicalMemoryManager:
             context_id: 对话上下文标识（群号/私聊用户ID），None 表示返回所有记忆
             max_turns: 最多返回最近 N 轮对话（None 表示返回所有），用于限制 messages 数组长度
         """
+        with self._memory_lock:
+            turns = list(self.working_memory)
+
         messages = []
-        for turn in self.working_memory:
+        for turn in turns:
             # 如果指定了 context_id，只返回匹配的记忆
             if context_id is not None and turn.context_id != context_id:
                 continue

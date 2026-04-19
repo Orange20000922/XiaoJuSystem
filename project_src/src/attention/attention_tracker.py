@@ -10,7 +10,7 @@
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Set, Tuple
 
 from src.logger import logger
 from configs.model_config import AttentionConfig
@@ -21,6 +21,7 @@ class UserAttention:
     """单个用户的注意力状态"""
     user_id: int
     user_name: str
+    context_key: Optional[str] = None
     mentioned_at: Optional[float] = None  # 最后一次被 @ 的时间戳
     last_message_at: float = 0.0          # 最后一次发言时间戳
 
@@ -44,23 +45,45 @@ class AttentionTracker:
     def __init__(self, config: AttentionConfig):
         self.config = config
 
-        # 用户注意力状态表 {user_id: UserAttention}
-        self.users: Dict[int, UserAttention] = {}
+        # 用户注意力状态表 {(context_key, user_id): UserAttention}
+        self.users: Dict[Tuple[Optional[str], int], UserAttention] = {}
 
         # 最近消息窗口（用于判断上下文活跃用户）
-        # 存储 (user_id, timestamp) 元组
+        # 存储 ((context_key, user_id), timestamp) 元组
         self.recent_messages: deque = deque(maxlen=config.context_window_messages)
 
-        # 最后一次回复时间（全局冷却）
+        # 最后一次回复时间（用于状态展示）
         self.last_reply_time: float = 0.0
+        # 各上下文的最后一次回复时间（作用域冷却）
+        self.scope_last_reply_time: Dict[Optional[str], float] = {}
 
-        # 每个用户的最后回复时间（用户级冷却）
-        self.user_last_reply: Dict[int, float] = {}
+        # 每个用户在上下文内的最后回复时间（用户级冷却）
+        self.user_last_reply: Dict[Tuple[Optional[str], int], float] = {}
 
-        # 非焦点回复的最后时间（全局，用于控制非焦点回复频率）
+        # 非焦点回复的最后时间（用于状态展示）
         self.last_non_focus_reply_time: float = 0.0
+        # 各上下文的非焦点回复间隔控制
+        self.scope_last_non_focus_reply_time: Dict[Optional[str], float] = {}
 
-    def on_message(self, user_id: int, user_name: str, is_mentioned: bool):
+    @staticmethod
+    def _user_key(user_id: int, context_key: Optional[str]) -> Tuple[Optional[str], int]:
+        return (context_key, user_id)
+
+    def get_user_attention(
+        self,
+        user_id: int,
+        context_key: Optional[str] = None,
+    ) -> Optional[UserAttention]:
+        """获取指定上下文中的用户注意力状态。"""
+        return self.users.get(self._user_key(user_id, context_key))
+
+    def on_message(
+        self,
+        user_id: int,
+        user_name: str,
+        is_mentioned: bool,
+        context_key: Optional[str] = None,
+    ):
         """
         记录用户消息事件
 
@@ -68,40 +91,48 @@ class AttentionTracker:
             user_id: 用户 QQ 号
             user_name: 用户昵称
             is_mentioned: 是否 @ 了机器人
+            context_key: 上下文标识（如 group_123）
         """
         now = time.time()
+        key = self._user_key(user_id, context_key)
 
         # 更新或创建用户注意力状态
-        if user_id not in self.users:
-            self.users[user_id] = UserAttention(
+        if key not in self.users:
+            self.users[key] = UserAttention(
                 user_id=user_id,
                 user_name=user_name,
+                context_key=context_key,
                 last_message_at=now,
             )
         else:
-            self.users[user_id].last_message_at = now
+            self.users[key].last_message_at = now
             # 更新昵称（可能变化）
-            self.users[user_id].user_name = user_name
+            self.users[key].user_name = user_name
 
         # 如果被 @，更新注意力焦点
         if is_mentioned:
-            self.users[user_id].mentioned_at = now
-            logger.debug(f"注意力焦点: {user_name}({user_id}) @ 了机器人")
+            self.users[key].mentioned_at = now
+            logger.debug(
+                f"注意力焦点: {user_name}({user_id}) @ 了机器人 "
+                f"context={context_key}"
+            )
 
         # 记录到最近消息窗口
-        self.recent_messages.append((user_id, now))
+        self.recent_messages.append((key, now))
 
-    def on_reply(self, user_id: Optional[int] = None):
+    def on_reply(self, user_id: Optional[int] = None, context_key: Optional[str] = None):
         """
         记录回复事件（更新冷却时间）
 
         Args:
             user_id: 回复的目标用户（None 表示全局回复）
+            context_key: 上下文标识（如 group_123）
         """
         now = time.time()
         self.last_reply_time = now
+        self.scope_last_reply_time[context_key] = now
         if user_id is not None:
-            self.user_last_reply[user_id] = now
+            self.user_last_reply[self._user_key(user_id, context_key)] = now
 
     def should_respond(
         self,
@@ -110,6 +141,7 @@ class AttentionTracker:
         behavior_type: str,
         is_mentioned: bool,
         in_attention_focus: bool = False,
+        context_key: Optional[str] = None,
     ) -> bool:
         """
         综合判断是否应该回复该用户
@@ -128,19 +160,21 @@ class AttentionTracker:
             behavior_type: BERT 检测的行为类型
             is_mentioned: 是否 @ 了机器人
             in_attention_focus: 是否在注意力焦点内（由外部传入）
+            context_key: 上下文标识（如 group_123）
 
         Returns:
             True 表示应该回复
         """
         logger.debug(
             f"[注意力判断] user={user_id} @={is_mentioned} "
+            f"context={context_key} "
             f"focus={in_attention_focus} "
             f"emotion={emotion_intensity:.2f} behavior={behavior_type}"
         )
 
         # 1. 被 @ → 必回复（但检查冷却）
         if is_mentioned:
-            if self._is_in_cooldown(user_id):
+            if self._is_in_cooldown(user_id, context_key):
                 logger.info(f"[注意力判断] 用户 {user_id} 被 @ 但在冷却中，跳过回复")
                 return False
             logger.info(f"[注意力判断] 用户 {user_id} @ 了机器人，触发回复")
@@ -150,7 +184,7 @@ class AttentionTracker:
         in_focus = in_attention_focus
 
         # 3. 检查用户是否在上下文窗口内（最近活跃）
-        in_context = self._is_in_context_window(user_id)
+        in_context = self._is_in_context_window(user_id, context_key)
 
         # 4. 根据注意力状态调整阈值
         if in_focus:
@@ -168,7 +202,7 @@ class AttentionTracker:
             # 非焦点回复间隔检查（避免 bot 过于吵闹）
             if self.config.non_focus_reply_interval > 0:
                 now = time.time()
-                time_since_last = now - self.last_non_focus_reply_time
+                time_since_last = now - self.scope_last_non_focus_reply_time.get(context_key, 0.0)
                 if time_since_last < self.config.non_focus_reply_interval:
                     logger.debug(
                         f"[注意力判断] 非焦点回复间隔未到 "
@@ -178,7 +212,7 @@ class AttentionTracker:
 
         # 5. 情绪强度判断
         if emotion_intensity >= threshold:
-            if self._is_in_cooldown(user_id):
+            if self._is_in_cooldown(user_id, context_key):
                 logger.debug(f"用户 {user_id} 在冷却中，跳过回复")
                 return False
             logger.debug(
@@ -188,13 +222,14 @@ class AttentionTracker:
             # 如果是非焦点回复，更新非焦点回复时间
             if not in_focus and not in_context:
                 self.last_non_focus_reply_time = time.time()
+                self.scope_last_non_focus_reply_time[context_key] = self.last_non_focus_reply_time
 
             return True
 
         # 6. 提问行为判断（焦点用户或上下文用户的提问必回复）
         if behavior_type in ("ask_question", "seek_clarification"):
             if in_focus or in_context:
-                if self._is_in_cooldown(user_id):
+                if self._is_in_cooldown(user_id, context_key):
                     logger.debug(f"用户 {user_id} 在冷却中，跳过回复")
                     return False
                 logger.debug(f"用户 {user_id} 提问，且在注意力范围内，触发回复")
@@ -203,12 +238,17 @@ class AttentionTracker:
         logger.debug(f"[注意力判断] 用户 {user_id} 不满足回复条件")
         return False
 
-    def _is_in_cooldown(self, user_id: Optional[int] = None) -> bool:
+    def _is_in_cooldown(
+        self,
+        user_id: Optional[int] = None,
+        context_key: Optional[str] = None,
+    ) -> bool:
         """
         检查是否在冷却期内
 
         Args:
             user_id: 用户 QQ 号（None 表示检查全局冷却）
+            context_key: 上下文标识（如 group_123）
 
         Returns:
             True 表示在冷却中
@@ -216,31 +256,35 @@ class AttentionTracker:
         now = time.time()
         cooldown = self.config.cooldown_seconds
 
-        # 全局冷却检查
-        if (now - self.last_reply_time) < cooldown:
+        # 上下文冷却检查
+        if (now - self.scope_last_reply_time.get(context_key, 0.0)) < cooldown:
             return True
 
         # 用户级冷却检查
         if user_id is not None:
-            last_reply = self.user_last_reply.get(user_id, 0.0)
+            last_reply = self.user_last_reply.get(
+                self._user_key(user_id, context_key), 0.0
+            )
             if (now - last_reply) < cooldown:
                 return True
 
         return False
 
-    def _is_in_context_window(self, user_id: int) -> bool:
+    def _is_in_context_window(self, user_id: int, context_key: Optional[str] = None) -> bool:
         """
         检查用户是否在最近消息窗口内（上下文活跃）
 
         Args:
             user_id: 用户 QQ 号
+            context_key: 上下文标识（如 group_123）
 
         Returns:
             True 表示在窗口内
         """
-        return any(uid == user_id for uid, _ in self.recent_messages)
+        key = self._user_key(user_id, context_key)
+        return any(user_key == key for user_key, _ in self.recent_messages)
 
-    def get_focused_users(self) -> Set[int]:
+    def get_focused_users(self) -> Set[Tuple[Optional[str], int]]:
         """
         获取当前注意力焦点内的所有用户
 
@@ -251,20 +295,20 @@ class AttentionTracker:
             return set()
 
         focused = set()
-        for user_id, user in self.users.items():
+        for user_key, user in self.users.items():
             if user.is_mentioned_active(self.config.mentioned_user_ttl):
-                focused.add(user_id)
+                focused.add(user_key)
 
         return focused
 
-    def get_context_users(self) -> Set[int]:
+    def get_context_users(self) -> Set[Tuple[Optional[str], int]]:
         """
         获取当前上下文窗口内的所有用户
 
         Returns:
             用户 QQ 号集合
         """
-        return {uid for uid, _ in self.recent_messages}
+        return {user_key for user_key, _ in self.recent_messages}
 
     def cleanup_expired(self):
         """清理过期的注意力状态（定期调用，避免内存泄漏）"""
@@ -273,19 +317,19 @@ class AttentionTracker:
 
         # 清理过期的用户注意力状态
         expired = []
-        for user_id, user in self.users.items():
+        for user_key, user in self.users.items():
             # 如果用户既不在注意力焦点，也不在上下文窗口，且超过 TTL*2 未活跃
             if (
                 not user.is_mentioned_active(ttl)
-                and not self._is_in_context_window(user_id)
+                and not self._is_in_context_window(user.user_id, user.context_key)
                 and (now - user.last_message_at) > ttl * 2
             ):
-                expired.append(user_id)
+                expired.append(user_key)
 
-        for user_id in expired:
-            del self.users[user_id]
-            if user_id in self.user_last_reply:
-                del self.user_last_reply[user_id]
+        for user_key in expired:
+            del self.users[user_key]
+            if user_key in self.user_last_reply:
+                del self.user_last_reply[user_key]
 
         if expired:
             logger.debug(f"清理 {len(expired)} 个过期用户注意力状态")

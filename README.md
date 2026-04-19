@@ -119,12 +119,9 @@ cp config.json.example config.json
 #   - deepseek
 #   - custom (GLM / OpenAI 兼容)
 
-# 跑一个 ping
-python src/tools/quick_test.py --ping
+# 使用测试用CLI交互界面
+python inference_pipeline.py --config your_config.json
 
-# 交互式对话
-python src/tools/quick_test.py --msg "你好"
-```
 
 ### 可选模块
 
@@ -137,7 +134,7 @@ pip install opencv-python scikit-image
 
 # QQ 机器人（需 NapCat）
 pip install websockets pillow
-python run_qq_bot.py
+python run_qq_bot.py --config your_config.json ...(支持多人格配置)
 ```
 
 ---
