@@ -61,8 +61,12 @@ class _FakeMemoryBackend:
             ]
         }
 
-    def search(self, query=None, user_id=None, run_id=None, agent_id=None, limit=5):
+    def search(self, query=None, user_id=None, run_id=None, agent_id=None, limit=5, filters=None):
         del query
+        if filters:
+            user_id = filters.get("user_id", user_id)
+            run_id = filters.get("run_id", run_id)
+            agent_id = filters.get("agent_id", agent_id)
         results = self.get_all(user_id=user_id, run_id=run_id, agent_id=agent_id)["results"]
         return {"results": results[:limit]}
 

@@ -51,6 +51,7 @@ data/
 project_src/test/
 project_src/test_output/
 project_src/data_test/
+data_test/
 test/
 # Logs
 project_src/logs/

@@ -45,10 +45,15 @@ def add_memory(memory_text: str):
 
     # 验证写入
     print("\n验证召回...")
-    recalled = memory_manager.mem0.search(
+    recalled_result = memory_manager.mem0.search(
         query=memory_text[:20],  # 用前20个字符搜索
-        user_id=config.memory.user_id,
+        filters={"user_id": config.memory.user_id},
         limit=3
+    )
+    recalled = (
+        recalled_result.get("results", recalled_result)
+        if isinstance(recalled_result, dict)
+        else recalled_result
     )
 
     if recalled:

@@ -552,8 +552,7 @@ class HierarchicalMemoryManager:
                 executor.submit(
                     self.mem0.search,
                     query=query,
-                    user_id=self.user_id,
-                    run_id=run_id,
+                    filters={"user_id": self.user_id, "run_id": run_id},
                     limit=self.config.l3_search_limit,
                 )
                 for run_id in l2_run_ids
@@ -561,14 +560,13 @@ class HierarchicalMemoryManager:
             f_l3 = executor.submit(
                 self.mem0.search,
                 query=query,
-                user_id=self.user_id,
+                filters={"user_id": self.user_id},
                 limit=self.config.l3_search_limit,
             )
             f_l4 = executor.submit(
                 self.mem0.search,
                 query=query,
-                user_id=self.user_id,
-                agent_id="neuro_agent",
+                filters={"user_id": self.user_id, "agent_id": "neuro_agent"},
                 limit=self.config.l4_search_limit,
             )
             l2_results = [future.result() for future in l2_futures]
@@ -646,12 +644,17 @@ class HierarchicalMemoryManager:
         except Exception:
             return False
 
-    def _filter(self, search_result: Optional[Dict]) -> List[Dict]:
-        if not search_result or "results" not in search_result:
+    def _filter(self, search_result) -> List[Dict]:
+        if isinstance(search_result, dict):
+            results = search_result.get("results", [])
+        elif isinstance(search_result, list):
+            results = search_result
+        else:
             return []
+
         return [
-            r for r in search_result["results"]
-            if r.get("score", 0) >= self.config.relevance_threshold
+            r for r in results
+            if isinstance(r, dict) and r.get("score", 0) >= self.config.relevance_threshold
         ]
 
     def _merge(self, *result_sets) -> List[str]:

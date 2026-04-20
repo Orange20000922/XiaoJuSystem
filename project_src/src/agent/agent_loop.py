@@ -478,11 +478,12 @@ class AgentLoop:
             results = self.pipeline.memory.mem0.search(
                 query="情感 情绪 心情",
                 limit=self.proactive_config.l4_memory_limit,
-                user_id=self.pipeline.memory.config.user_id,
+                filters={"user_id": self.pipeline.memory.config.user_id},
             )
+            search_results = results.get("results", results) if isinstance(results, dict) else results
             # Mem0 返回的是字符串列表或字典列表，需要兼容处理
             memories = []
-            for r in results:
+            for r in search_results:
                 if isinstance(r, str):
                     memories.append(r)
                 elif isinstance(r, dict) and "memory" in r:
