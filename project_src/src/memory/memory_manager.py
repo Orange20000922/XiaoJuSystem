@@ -24,7 +24,8 @@ from configs.model_config import MemoryConfig
 from src.logger import logger
 
 if TYPE_CHECKING:
-    from src.core.inference_pipeline import ConversationTurn, LLMClient
+    from src.core_engine.runtime_types import ConversationTurn
+    from src.llm.client import LLMClient
 
 
 # tiktoken 编码器缓存（gpt-4o 编码兼容 GPT-5.2）

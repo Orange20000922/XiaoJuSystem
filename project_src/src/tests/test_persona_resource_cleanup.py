@@ -16,7 +16,10 @@ if "src.core" not in sys.modules:
     _core.__path__ = [str(_project_root / "src" / "core")]
     sys.modules["src.core"] = _core
 
-from src.core.persona_resource_cleanup import close_persona_resources, close_shared_memory_clients
+from src.core_engine.persona_resource_cleanup import (
+    close_persona_resources,
+    close_shared_memory_clients,
+)
 
 
 class FakeExecutor:

@@ -9,7 +9,7 @@ from .visual_types import (
 )
 
 if TYPE_CHECKING:
-    from src.core.inference_pipeline import NeuroLikePipeline
+    from src.core_engine.runtime_types import PipelineLike
     from src.llm.client import LLMClient
 
 
@@ -94,7 +94,7 @@ class LLMVisualEventAnalyzer:
 
 
 def build_visual_analyzer_from_pipeline(
-    pipeline: "NeuroLikePipeline",
+    pipeline: "PipelineLike",
     *,
     prompt: str = DEFAULT_VISION_ANALYSIS_PROMPT,
 ) -> Optional[LLMVisualEventAnalyzer]:

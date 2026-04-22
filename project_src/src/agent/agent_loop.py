@@ -30,8 +30,14 @@ import sys
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+from src.core_engine.runtime_types import ChatMode, PipelineLike
 from src.logger import logger
-from src.core.inference_pipeline import ChatMode, NeuroLikePipeline
+from src.core_engine.api.admin_api import (
+    get_persona_name,
+    search_l4_memories,
+    snapshot_emotion_state,
+    snapshot_recent_turns,
+)
 from configs.model_config import AgentConfig, ProactiveConfig, LLMConfig, LLMProvider
 
 
@@ -69,7 +75,7 @@ class AgentLoop:
 
     def __init__(
         self,
-        pipeline: NeuroLikePipeline,
+        pipeline: PipelineLike,
         config: AgentConfig,
         output_callback: Callable[[str, dict], None],
         proactive_config: Optional[ProactiveConfig] = None,
@@ -93,7 +99,7 @@ class AgentLoop:
         # 并发聊天线程池：每个 persona 最多同时处理 N 条消息
         self._chat_pool = ThreadPoolExecutor(
             max_workers=config.max_concurrent_chats,
-            thread_name_prefix=f"chat-{pipeline.personality.name}",
+            thread_name_prefix=f"chat-{get_persona_name(pipeline)}",
         )
 
         # 初始化主动决策模块
@@ -445,53 +451,22 @@ class AgentLoop:
 
     def _get_recent_conversations(self) -> List[Dict]:
         """从 pipeline.memory.working_memory 获取最近对话"""
-        limit = self.proactive_config.recent_turns_limit
-        if hasattr(self.pipeline.memory, 'working_memory'):
-            return [
-                {
-                    "user_input": turn.user_input,
-                    "response": turn.response,
-                    "emotion": turn.emotion,
-                    "intensity": turn.intensity,
-                }
-                for turn in self.pipeline.memory.working_memory[-limit:]
-            ]
-        return []
+        return snapshot_recent_turns(
+            self.pipeline,
+            limit=self.proactive_config.recent_turns_limit,
+        )
 
     def _load_emotion_state(self) -> Dict:
         """读取 data/emotion_state.json"""
-        path = project_root / "data" / "emotion_state.json"
-        if path.exists():
-            try:
-                return json.loads(path.read_text(encoding="utf-8"))
-            except Exception as e:
-                logger.warning(f"读取 emotion_state.json 失败: {e}")
-        return {}
+        return snapshot_emotion_state(self.pipeline)
 
     def _get_l4_memories(self) -> List[str]:
         """从 Mem0 搜索情感相关记忆"""
-        if not hasattr(self.pipeline.memory, 'mem0'):
-            return []
-
-        try:
-            # 搜索带情感标签的记忆
-            results = self.pipeline.memory.mem0.search(
-                query="情感 情绪 心情",
-                limit=self.proactive_config.l4_memory_limit,
-                filters={"user_id": self.pipeline.memory.config.user_id},
-            )
-            search_results = results.get("results", results) if isinstance(results, dict) else results
-            # Mem0 返回的是字符串列表或字典列表，需要兼容处理
-            memories = []
-            for r in search_results:
-                if isinstance(r, str):
-                    memories.append(r)
-                elif isinstance(r, dict) and "memory" in r:
-                    memories.append(r["memory"])
-            return memories
-        except Exception as e:
-            logger.warning(f"搜索 L4 记忆失败: {e}")
-            return []
+        return search_l4_memories(
+            self.pipeline,
+            query="情感 情绪 心情",
+            limit=self.proactive_config.l4_memory_limit,
+        )
 
     def _check_idle_trigger(self):
         """medium 级别：空闲超时触发主动发言"""

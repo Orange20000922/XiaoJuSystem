@@ -23,7 +23,7 @@ sys.path.insert(0, str(project_root))
 os.chdir(project_root)
 
 from configs.config_loader import AppConfig
-from src.core.small_model import BERTInferenceEngine
+from src.core_engine import BERTInferenceEngine
 
 
 DEFAULT_TEXTS = [

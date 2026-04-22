@@ -13,8 +13,8 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from configs.config_loader import AppConfig
+from src.llm.client import LLMClient
 from src.memory.memory_manager import HierarchicalMemoryManager
-from src.core.inference_pipeline import LLMClient
 
 
 def add_memory(memory_text: str):

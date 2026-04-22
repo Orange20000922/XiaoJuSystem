@@ -7,7 +7,7 @@ from .visual_types import VisualEvent
 
 if TYPE_CHECKING:
     from src.agent.agent_loop import AgentEvent, AgentLoop
-    from src.core.inference_pipeline import ChatMode
+    from src.core_engine.runtime_types import ChatMode
 
 
 def visual_event_to_agent_event(
@@ -19,7 +19,7 @@ def visual_event_to_agent_event(
     context_id: Optional[str] = None,
 ) -> "AgentEvent":
     from src.agent.agent_loop import AgentEvent
-    from src.core.inference_pipeline import ChatMode
+    from src.core_engine.runtime_types import ChatMode
 
     metadata = {
         "event_id": event.event_id,

@@ -26,7 +26,7 @@ from typing import Dict, List, Tuple, Optional
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.core.emotion_state import EmotionStateConfig, EmotionStateTracker, EmotionState
+from src.core_engine import EmotionState, EmotionStateConfig, EmotionStateTracker
 
 
 # ============== 小橘 AI 回复情绪近似 ==============

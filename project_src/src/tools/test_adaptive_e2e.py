@@ -18,7 +18,7 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from src.logger import logger
 from configs.config_loader import AppConfig
-from src.core.inference_pipeline import NeuroLikePipeline
+from src.core_engine import NeuroLikePipeline
 from src.vision import (
     CV2_AVAILABLE,
     VisualPerceptionConfig,

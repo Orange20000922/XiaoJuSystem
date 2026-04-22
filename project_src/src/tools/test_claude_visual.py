@@ -8,7 +8,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from configs.config_loader import AppConfig
-from src.core.inference_pipeline import NeuroLikePipeline
+from src.core_engine import NeuroLikePipeline
 from src.vision import (
     CV2_AVAILABLE, VisualPerceptionConfig, VisualPerceptionPipeline,
     build_visual_analyzer_from_pipeline, derive_visual_emotion_signal,
