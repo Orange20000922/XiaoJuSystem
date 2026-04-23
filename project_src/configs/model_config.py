@@ -603,6 +603,44 @@ class ImageConfig:
 
 
 @dataclass
+class ImageGenerationConfig:
+    """OpenAI-compatible image generation config."""
+
+    enabled: bool = False
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    model: str = "gpt-image-2"
+    timeout: int = 120
+    max_retries: int = 2
+    size: str = "1024x1024"
+    quality: str = "auto"
+    moderation: str = "auto"
+    background: str = "auto"
+    output_format: str = "png"
+    response_format: str = "b64_json"
+    output_dir: str = "./data/generated_images"
+    output_prefix: str = "gpt_image"
+    n: int = 1
+    output_compression: Optional[int] = None
+    user: Optional[str] = None
+    default_prompt: str = ""
+
+    def __post_init__(self):
+        if self.api_key is None:
+            self.api_key = (
+                os.environ.get("OPENAI_IMAGE_API_KEY")
+                or os.environ.get("OPENAI_API_KEY")
+            )
+
+        if self.base_url is None:
+            self.base_url = (
+                os.environ.get("OPENAI_IMAGE_BASE_URL")
+                or os.environ.get("OPENAI_BASE_URL")
+                or "https://api.openai.com/v1"
+            )
+
+
+@dataclass
 class VisualPerceptionSettings:
     """动态视觉感知配置。"""
     enabled: bool = False
@@ -792,5 +830,4 @@ class SecurityConfig:
         env_keys = os.environ.get("API_SERVICE_KEYS", "")
         if env_keys:
             self.api_keys = [k.strip() for k in env_keys.split(",") if k.strip()]
-
 

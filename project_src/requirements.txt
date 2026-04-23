@@ -6,13 +6,16 @@ tqdm>=4.65.0
 openai>=1.0.0
 anthropic>=0.18.0
 
-# 分级记忆系统
+# Layered memory
 mem0ai>=1.0.0
 qdrant-client>=1.7.0
 tiktoken>=0.7.0
 
-# 日志
+# Logging
 loguru>=0.7.0
 
-# 视觉感知原型
+# Client TUI
+textual>=8.2.3
+
+# Visual perception prototype
 opencv-python-headless>=4.10.0

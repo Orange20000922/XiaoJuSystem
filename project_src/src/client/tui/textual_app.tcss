@@ -1,0 +1,55 @@
+Screen {
+    background: #050403;
+    color: #ffd88a;
+}
+
+Header {
+    background: #1b1207;
+    color: #ffd88a;
+}
+
+Footer {
+    background: #1b1207;
+    color: #ffd88a;
+}
+
+#body {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#sidebar {
+    width: 34;
+    min-width: 28;
+    margin: 0 1 1 1;
+}
+
+#chat-column {
+    width: 1fr;
+    layout: vertical;
+    margin: 0 1 1 0;
+}
+
+.panel {
+    border: round #c58a2f;
+    background: #120d07;
+    color: #ffd88a;
+    padding: 1 2;
+    margin-bottom: 1;
+    height: auto;
+}
+
+#chat-log {
+    height: 1fr;
+    border: round #c58a2f;
+    background: #0a0805;
+    color: #ffe2a5;
+    padding: 1 1;
+}
+
+#chat-input {
+    border: round #c58a2f;
+    background: #120d07;
+    color: #ffe2a5;
+    margin-top: 1;
+}

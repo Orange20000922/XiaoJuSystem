@@ -291,6 +291,28 @@
     "download_timeout": 15.0
   },
 
+  "image_generation": {
+    "_comment": "[optional] OpenAI-compatible image generation via gpt-image-2 or a proxy endpoint",
+    "enabled": false,
+    "api_key": "",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-image-2",
+    "timeout": 120,
+    "max_retries": 2,
+    "size": "1024x1024",
+    "quality": "auto",
+    "moderation": "auto",
+    "background": "auto",
+    "output_format": "png",
+    "response_format": "b64_json",
+    "output_dir": "./data/generated_images",
+    "output_prefix": "gpt_image",
+    "n": 1,
+    "output_compression": null,
+    "user": "",
+    "default_prompt": ""
+  },
+
   "audio": {
     "_comment": [
       "[可选] 语音合成",

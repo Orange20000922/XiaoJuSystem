@@ -19,6 +19,7 @@ from configs.model_config import (
     EmotionPromptConfig,
     EmotionStateConfig,
     ImageConfig,
+    ImageGenerationConfig,
     LLMConfig,
     LLMProvider,
     MemoryConfig,
@@ -319,6 +320,30 @@ def load_image_config(cfg: dict) -> ImageConfig:
     )
 
 
+def load_image_generation_config(cfg: dict) -> ImageGenerationConfig:
+    ig = cfg.get("image_generation", {})
+    return ImageGenerationConfig(
+        enabled=ig.get("enabled", False),
+        api_key=_resolve_api_key("OPENAI_IMAGE_API_KEY", ig.get("api_key", "")),
+        base_url=ig.get("base_url") or os.environ.get("OPENAI_IMAGE_BASE_URL") or None,
+        model=ig.get("model", "gpt-image-2"),
+        timeout=ig.get("timeout", 120),
+        max_retries=ig.get("max_retries", 2),
+        size=ig.get("size", "1024x1024"),
+        quality=ig.get("quality", "auto"),
+        moderation=ig.get("moderation", "auto"),
+        background=ig.get("background", "auto"),
+        output_format=ig.get("output_format", "png"),
+        response_format=ig.get("response_format", "b64_json"),
+        output_dir=ig.get("output_dir", "./data/generated_images"),
+        output_prefix=ig.get("output_prefix", "gpt_image"),
+        n=ig.get("n", 1),
+        output_compression=ig.get("output_compression"),
+        user=ig.get("user") or None,
+        default_prompt=ig.get("default_prompt", ""),
+    )
+
+
 def load_visual_perception_config(cfg: dict) -> VisualPerceptionSettings:
     vp = cfg.get("visual_perception", {})
     return VisualPerceptionSettings(
@@ -499,6 +524,7 @@ class AppConfig:
         proactive: Optional[ProactiveConfig] = None,
         qq_bot: Optional[QQBotConfig] = None,
         image: Optional[ImageConfig] = None,
+        image_generation: Optional[ImageGenerationConfig] = None,
         visual_perception: Optional[VisualPerceptionSettings] = None,
         audio: Optional[AudioConfig] = None,
         sensevoice: Optional[SenseVoiceConfig] = None,
@@ -522,6 +548,7 @@ class AppConfig:
         self.proactive = proactive or ProactiveConfig()
         self.qq_bot = qq_bot or QQBotConfig()
         self.image = image or ImageConfig()
+        self.image_generation = image_generation or ImageGenerationConfig()
         self.visual_perception = visual_perception or VisualPerceptionSettings()
         self.audio = audio or AudioConfig(enabled=False)
         self.sensevoice = sensevoice or SenseVoiceConfig(enabled=False)
@@ -555,6 +582,7 @@ class AppConfig:
             proactive=load_proactive_config(cfg),
             qq_bot=load_qq_bot_config(cfg),
             image=load_image_config(cfg),
+            image_generation=load_image_generation_config(cfg),
             visual_perception=load_visual_perception_config(cfg),
             audio=load_audio_config(cfg),
             sensevoice=load_sensevoice_config(cfg),
