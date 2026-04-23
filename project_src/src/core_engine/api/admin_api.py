@@ -142,7 +142,11 @@ def search_l4_memories(
         return []
 
     try:
-        results = memory.mem0.search(query=query, limit=limit, filters={"user_id": user_id})
+        results = memory.mem0.search(
+            query=query,
+            top_k=limit,
+            filters={"user_id": user_id},
+        )
     except Exception:
         return []
 

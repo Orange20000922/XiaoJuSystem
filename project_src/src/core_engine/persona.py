@@ -121,6 +121,7 @@ class PersonaInstance:
             self.memory = HierarchicalMemoryManager(
                 config=memory_config,
                 llm_client=infra.llm_pool.primary,
+                maintenance_llm_client=infra.llm_pool.secondary or infra.llm_pool.primary,
                 user_id=personality.name,
             )
         else:

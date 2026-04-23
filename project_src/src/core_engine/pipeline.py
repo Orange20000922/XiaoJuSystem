@@ -249,6 +249,9 @@ class NeuroLikePipeline:
     def close(self):
         self._persona.close()
 
+    def register_visual_skill(self, handler) -> None:
+        self._persona.register_visual_skill(handler)
+
     def handle_visual_event(self, event) -> Dict:
         return self._persona.handle_visual_event(event)
 

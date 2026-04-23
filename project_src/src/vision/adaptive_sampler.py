@@ -17,7 +17,14 @@ from dataclasses import dataclass
 from typing import Deque, Optional
 
 import numpy as np
-import torch
+
+try:
+    import torch
+
+    TORCH_AVAILABLE = True
+except ImportError:
+    torch = None
+    TORCH_AVAILABLE = False
 
 
 @dataclass
@@ -141,15 +148,25 @@ class AdaptiveFrameSampler:
         if len(self._score_buffer) < self.config.stft_window_size:
             return
 
-        signal = torch.tensor(list(self._score_buffer), dtype=torch.float32)
-        signal = signal - signal.mean()
-        window = torch.hann_window(len(signal))
-        spectrum = torch.fft.rfft(signal * window)
-        power = spectrum.abs().pow(2)
+        if TORCH_AVAILABLE:
+            signal = torch.tensor(list(self._score_buffer), dtype=torch.float32)
+            signal = signal - signal.mean()
+            window = torch.hann_window(len(signal))
+            spectrum = torch.fft.rfft(signal * window)
+            power = spectrum.abs().pow(2)
+            cutoff_bin = max(1, int(len(power) * self.config.highfreq_cutoff_ratio))
+            total_energy = power[1:].sum().item()
+            high_energy = power[cutoff_bin:].sum().item()
+        else:
+            signal = np.asarray(self._score_buffer, dtype=np.float32)
+            signal = signal - float(signal.mean())
+            window = np.hanning(len(signal)).astype(np.float32)
+            spectrum = np.fft.rfft(signal * window)
+            power = np.abs(spectrum) ** 2
+            cutoff_bin = max(1, int(len(power) * self.config.highfreq_cutoff_ratio))
+            total_energy = float(power[1:].sum())
+            high_energy = float(power[cutoff_bin:].sum())
 
-        cutoff_bin = max(1, int(len(power) * self.config.highfreq_cutoff_ratio))
-        total_energy = power[1:].sum().item()
-        high_energy = power[cutoff_bin:].sum().item()
         r_high = high_energy / (total_energy + 1e-8)
 
         raw_fps = self.config.fps_min + (

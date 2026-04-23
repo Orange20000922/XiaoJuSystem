@@ -38,7 +38,7 @@ try:
     print("add() 成功")
 
     print("测试 search()...")
-    r = m.search("测试", filters={"user_id": "test_user"}, limit=3)
+    r = m.search("测试", filters={"user_id": "test_user"}, top_k=3)
     print(f"search() 成功，结果数={len(r.get('results', []))}")
 except Exception as e:
     print(f"失败: {type(e).__name__}: {e}")

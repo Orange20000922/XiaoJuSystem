@@ -108,10 +108,12 @@ class HierarchicalMemoryManager:
         self,
         config: MemoryConfig,
         llm_client: "LLMClient",
+        maintenance_llm_client: Optional["LLMClient"] = None,
         user_id: str = None,
     ):
         self.config = config
         self.llm_client = llm_client
+        self.maintenance_llm_client = maintenance_llm_client or llm_client
         self.user_id = user_id or config.user_id or "owner"
         self.session_id = self._new_session_id()
 
@@ -203,6 +205,21 @@ class HierarchicalMemoryManager:
 
     def _turn_seq(self, turn: "ConversationTurn") -> int:
         return int(getattr(turn, "_memory_seq", 0))
+
+    def _maintenance_generate(
+        self,
+        *,
+        system_prompt: str,
+        user_input: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> str:
+        return self.maintenance_llm_client.generate(
+            system_prompt=system_prompt,
+            user_input=user_input,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
 
     # ── L1 操作 ──────────────────────────────────────────────────────────
 
@@ -347,8 +364,7 @@ class HierarchicalMemoryManager:
             all_state_texts = []
             for run_id in run_ids:
                 session_mems = self.mem0.get_all(
-                    user_id=self.user_id,
-                    run_id=run_id,
+                    filters={"user_id": self.user_id, "run_id": run_id},
                 )
                 if not session_mems or not session_mems.get("results"):
                     continue
@@ -359,7 +375,7 @@ class HierarchicalMemoryManager:
             if all_state_texts:
                 all_states = "\n".join(all_state_texts)
 
-                raw_facts = self.llm_client.generate(
+                raw_facts = self._maintenance_generate(
                     system_prompt=_FACT_EXTRACTION_PROMPT,
                     user_input=all_states,
                     max_tokens=400,
@@ -420,6 +436,21 @@ class HierarchicalMemoryManager:
             user_id=self.user_id,
         )
 
+    def add_visual_session_summary_l3(self, content: str):
+        """将实时视觉会话的全局总结写入 L3。"""
+        self.mem0.add(
+            [{"role": "assistant", "content": f"[视觉总结] {content}"}],
+            user_id=self.user_id,
+        )
+
+    def add_emotion_snapshot_l4(self, snapshot, source: str = "runtime"):
+        """将尾端情绪状态快照写入 L4。"""
+        content = snapshot if isinstance(snapshot, str) else json.dumps(
+            snapshot,
+            ensure_ascii=False,
+        )
+        self.add_knowledge(f"[尾端情绪状态][{source}] {content}")
+
     def build_user_profile_l4(
         self,
         intensity_threshold: float = 0.6,
@@ -438,7 +469,7 @@ class HierarchicalMemoryManager:
         import re
 
         # 拉取所有 L3 记录
-        all_l3 = self.mem0.get_all(user_id=self.user_id)
+        all_l3 = self.mem0.get_all(filters={"user_id": self.user_id})
         if not all_l3 or not all_l3.get("results"):
             from src.logger import logger
             logger.info("L4 画像构建：L3 无记录，跳过")
@@ -468,7 +499,7 @@ class HierarchicalMemoryManager:
 
             # 策略 B：无标签，用 LLM 推断情绪
             try:
-                raw = self.llm_client.generate(
+                raw = self._maintenance_generate(
                     system_prompt=_EMOTION_INFER_PROMPT,
                     user_input=text[:500],  # 截断避免 token 过多
                     max_tokens=50,
@@ -504,7 +535,7 @@ class HierarchicalMemoryManager:
         combined_text = "\n---\n".join(strong_entries[:10])  # 最多 10 条
         keyword_hint = f"\n\n关键词参考（高频出现）：{', '.join(keywords)}" if keywords else ""
 
-        raw_profile = self.llm_client.generate(
+        raw_profile = self._maintenance_generate(
             system_prompt=_PROFILE_COMPACT_PROMPT,
             user_input=combined_text + keyword_hint,
             max_tokens=600,
@@ -554,7 +585,7 @@ class HierarchicalMemoryManager:
                     self.mem0.search,
                     query=query,
                     filters={"user_id": self.user_id, "run_id": run_id},
-                    limit=self.config.l3_search_limit,
+                    top_k=self.config.l3_search_limit,
                 )
                 for run_id in l2_run_ids
             ]
@@ -562,13 +593,13 @@ class HierarchicalMemoryManager:
                 self.mem0.search,
                 query=query,
                 filters={"user_id": self.user_id},
-                limit=self.config.l3_search_limit,
+                top_k=self.config.l3_search_limit,
             )
             f_l4 = executor.submit(
                 self.mem0.search,
                 query=query,
                 filters={"user_id": self.user_id, "agent_id": "neuro_agent"},
-                limit=self.config.l4_search_limit,
+                top_k=self.config.l4_search_limit,
             )
             l2_results = [future.result() for future in l2_futures]
             l3 = f_l3.result()
@@ -640,7 +671,7 @@ class HierarchicalMemoryManager:
     def _has_l3_records(self) -> bool:
         """检查 L3（user 级持久记忆）是否有任何记录"""
         try:
-            l3 = self.mem0.get_all(user_id=self.user_id)
+            l3 = self.mem0.get_all(filters={"user_id": self.user_id})
             return bool(l3 and l3.get("results"))
         except Exception:
             return False

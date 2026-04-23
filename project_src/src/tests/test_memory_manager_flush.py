@@ -50,7 +50,12 @@ class _FakeMemoryBackend:
             }
         )
 
-    def get_all(self, user_id=None, run_id=None, agent_id=None):
+    def get_all(self, *, filters=None, top_k=20, **kwargs):
+        del kwargs
+        filters = filters or {}
+        user_id = filters.get("user_id")
+        run_id = filters.get("run_id")
+        agent_id = filters.get("agent_id")
         return {
             "results": [
                 {"memory": record["memory"], "score": record["score"]}
@@ -58,17 +63,14 @@ class _FakeMemoryBackend:
                 if (user_id is None or record["user_id"] == user_id)
                 and (run_id is None or record["run_id"] == run_id)
                 and (agent_id is None or record["agent_id"] == agent_id)
-            ]
+            ][:top_k]
         }
 
-    def search(self, query=None, user_id=None, run_id=None, agent_id=None, limit=5, filters=None):
+    def search(self, query=None, *, filters=None, top_k=20, **kwargs):
         del query
-        if filters:
-            user_id = filters.get("user_id", user_id)
-            run_id = filters.get("run_id", run_id)
-            agent_id = filters.get("agent_id", agent_id)
-        results = self.get_all(user_id=user_id, run_id=run_id, agent_id=agent_id)["results"]
-        return {"results": results[:limit]}
+        del kwargs
+        results = self.get_all(filters=filters, top_k=top_k)["results"]
+        return {"results": results[:top_k]}
 
 
 _fake_mem0 = types.ModuleType("mem0")

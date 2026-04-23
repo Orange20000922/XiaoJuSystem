@@ -43,16 +43,24 @@ class VisualSkillExecutor:
 
     def __init__(
         self,
-        handler: Callable[..., List[VisualEvent]],
+        handler: Callable[..., object],
     ):
         self._handler = handler
 
     def execute(self, top_k: int = 2) -> str:
         try:
-            events = self._handler(top_k=top_k)
+            result = self._handler(top_k=top_k)
         except Exception as exc:
             logger.warning(f"视觉技能执行失败: {exc}")
             return ""
+
+        if isinstance(result, str):
+            return result
+
+        if result is None:
+            return "当前画面暂无显著变化"
+
+        events = list(result)
         if not events:
             return "当前画面暂无显著变化"
         parts = [e.summary_text() for e in events if e.summary_text()]

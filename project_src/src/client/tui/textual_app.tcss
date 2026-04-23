@@ -1,55 +1,149 @@
 Screen {
-    background: #050403;
-    color: #ffd88a;
+    background: #0a0f0d;
+    color: #d9dbc9;
 }
 
 Header {
-    background: #1b1207;
-    color: #ffd88a;
+    background: #18211c;
+    color: #d6d6c6;
+    text-style: bold;
 }
 
 Footer {
-    background: #1b1207;
-    color: #ffd88a;
+    background: #18211c;
+    color: #aeb6a6;
 }
 
-#body {
+#shell {
     layout: horizontal;
     height: 1fr;
+    padding: 1 1 1 1;
+    background: #0b100d;
 }
 
-#sidebar {
+#left-column {
     width: 34;
     min-width: 28;
-    margin: 0 1 1 1;
+    max-width: 38;
+    margin-right: 1;
 }
 
-#chat-column {
+#center-column {
     width: 1fr;
-    layout: vertical;
-    margin: 0 1 1 0;
+    min-width: 48;
+    margin-right: 1;
+}
+
+#right-column {
+    width: 34;
+    min-width: 28;
+    max-width: 38;
 }
 
 .panel {
-    border: round #c58a2f;
-    background: #120d07;
-    color: #ffd88a;
+    border: round #4e6257;
+    background: #121814;
+    color: #d7d8cb;
     padding: 1 2;
     margin-bottom: 1;
+}
+
+.compact {
     height: auto;
 }
 
-#chat-log {
+.muted {
+    color: #abb3a3;
+}
+
+#portrait-panel {
+    height: 24;
+    min-height: 20;
+    padding: 1 1;
+    background: #101611;
+    border: round #5a7065;
+}
+
+.portrait-shell {
+    content-align: center middle;
+}
+
+.portrait-ansi {
+    width: 1fr;
+    content-align: center middle;
+    padding-bottom: 1;
+}
+
+.portrait-meta {
+    width: 1fr;
+    padding: 0 1;
+}
+
+#scene-bar {
+    background: #151d18;
+    color: #cad0c5;
+    border: round #53675d;
+    margin-bottom: 1;
+    padding: 0 2;
+    height: 3;
+}
+
+#chat-scroll {
     height: 1fr;
-    border: round #c58a2f;
-    background: #0a0805;
-    color: #ffe2a5;
+    border: round #4c6056;
+    background: #0f1411;
     padding: 1 1;
 }
 
+#chat-thread {
+    width: 1fr;
+    height: auto;
+    layout: vertical;
+}
+
+.message {
+    width: 1fr;
+    height: auto;
+    padding: 1 2;
+    margin-bottom: 1;
+    border: round #425349;
+    color: #d7dbcf;
+    background: #141a16;
+}
+
+.message.user {
+    margin-left: 12;
+    border: round #5b6d61;
+    background: #18211c;
+    color: #dfe4d8;
+}
+
+.message.assistant {
+    margin-right: 9;
+    border: round #6b5f4f;
+    background: #1b1914;
+    color: #e1dacd;
+}
+
+.message.system {
+    margin-left: 4;
+    margin-right: 4;
+    border: round #4f5753;
+    background: #131715;
+    color: #b8c0b4;
+}
+
+.message.visual {
+    margin-left: 2;
+    margin-right: 6;
+    border: round #50615f;
+    background: #121a1a;
+    color: #c9dbd4;
+}
+
 #chat-input {
-    border: round #c58a2f;
-    background: #120d07;
-    color: #ffe2a5;
+    border: round #52675d;
+    background: #131915;
+    color: #e1e2d6;
     margin-top: 1;
 }

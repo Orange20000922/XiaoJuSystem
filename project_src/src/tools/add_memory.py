@@ -48,7 +48,7 @@ def add_memory(memory_text: str):
     recalled_result = memory_manager.mem0.search(
         query=memory_text[:20],  # 用前20个字符搜索
         filters={"user_id": config.memory.user_id},
-        limit=3
+        top_k=3
     )
     recalled = (
         recalled_result.get("results", recalled_result)
@@ -78,7 +78,7 @@ def list_memories():
     )
 
     print("正在获取所有记忆...")
-    memories = memory_manager.mem0.get_all(user_id=config.memory.user_id)
+    memories = memory_manager.mem0.get_all(filters={"user_id": config.memory.user_id})
 
     if memories:
         print(f"\n共有 {len(memories)} 条记忆:\n")

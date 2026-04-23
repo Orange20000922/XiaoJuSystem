@@ -6,7 +6,7 @@ import argparse
 from typing import Optional
 
 from src.client.tui.textual_app import TextualClientApp
-from src.core_engine.api import DirectRuntime
+from src.core_engine.api.direct_runtime import DirectRuntime
 
 
 def run_textual_client(

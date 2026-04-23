@@ -1,3 +1,4 @@
+import importlib.abc
 import importlib.util
 import sys
 import tempfile
@@ -847,6 +848,13 @@ class TestVisualSkillExecutor(unittest.TestCase):
         result = executor.execute()
         self.assertEqual(result, "当前画面暂无显著变化")
 
+    def test_returns_string_message_directly(self):
+        executor = VisualSkillExecutor(
+            handler=lambda top_k=2: "视觉已启动，正在观察当前画面，请稍后再问一次。"
+        )
+        result = executor.execute()
+        self.assertEqual(result, "视觉已启动，正在观察当前画面，请稍后再问一次。")
+
     def test_handles_exception_gracefully(self):
         def _fail(**kwargs):
             raise RuntimeError("pipeline error")
@@ -881,6 +889,57 @@ class _SamplerBase(unittest.TestCase):
         defaults.update(overrides)
         cfg = self._AdaptiveFrameSamplerConfig(**defaults)
         return self._AdaptiveFrameSampler(cfg, source_fps=30.0)
+
+
+class _BlockTorchFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "torch" or fullname.startswith("torch."):
+            raise ImportError(f"blocked import for {fullname}")
+        return None
+
+
+class TestAdaptiveFrameSamplerOptionalTorch(unittest.TestCase):
+    def test_import_and_fft_fallback_work_without_torch(self):
+        sampler_path = MODULE_PATH.parent / "adaptive_sampler.py"
+        module_name = "src.vision.adaptive_sampler_no_torch"
+        spec = importlib.util.spec_from_file_location(module_name, sampler_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+
+        blocker = _BlockTorchFinder()
+        module = importlib.util.module_from_spec(spec)
+        saved_torch_modules = {
+            name: value
+            for name, value in list(sys.modules.items())
+            if name == "torch" or name.startswith("torch.")
+        }
+        sys.modules.pop(module_name, None)
+        sys.modules[module_name] = module
+        for name in saved_torch_modules:
+            sys.modules.pop(name, None)
+        sys.modules["torch"] = None
+        sys.meta_path.insert(0, blocker)
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.meta_path.remove(blocker)
+            sys.modules.pop(module_name, None)
+            sys.modules.pop("torch", None)
+            sys.modules.update(saved_torch_modules)
+
+        self.assertFalse(module.TORCH_AVAILABLE)
+        config = module.AdaptiveFrameSamplerConfig(
+            stft_window_size=16,
+            stft_hop_size=2,
+            smoothing_alpha=0.5,
+        )
+        sampler = module.AdaptiveFrameSampler(config, source_fps=30.0)
+
+        for i in range(32):
+            score = 0.8 if i % 2 == 0 else 0.1
+            sampler.update(change_score=score, smoothed_score=score, timestamp=i / 30.0)
+
+        self.assertGreater(sampler.current_target_fps, 8.0)
 
 
 class TestAdaptiveFrameSamplerStaticScene(_SamplerBase):

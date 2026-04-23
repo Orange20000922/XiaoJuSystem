@@ -57,7 +57,12 @@ class _FakeMemoryBackend:
             }
         )
 
-    def get_all(self, user_id=None, run_id=None, agent_id=None):
+    def get_all(self, *, filters=None, top_k=20, **kwargs):
+        del kwargs
+        filters = filters or {}
+        user_id = filters.get("user_id")
+        run_id = filters.get("run_id")
+        agent_id = filters.get("agent_id")
         return {
             "results": [
                 {"memory": record["memory"], "score": record["score"]}
@@ -65,21 +70,16 @@ class _FakeMemoryBackend:
                 if (user_id is None or record["user_id"] == user_id)
                 and (run_id is None or record["run_id"] == run_id)
                 and (agent_id is None or record["agent_id"] == agent_id)
-            ]
+            ][:top_k]
         }
 
-    def search(self, query=None, user_id=None, run_id=None, agent_id=None, limit=5, filters=None):
+    def search(self, query=None, *, filters=None, top_k=20, **kwargs):
         del query
-        if filters:
-            user_id = filters.get("user_id", user_id)
-            run_id = filters.get("run_id", run_id)
-            agent_id = filters.get("agent_id", agent_id)
         return {
             "results": self.get_all(
-                user_id=user_id,
-                run_id=run_id,
-                agent_id=agent_id,
-            )["results"][:limit]
+                filters=filters,
+                top_k=top_k,
+            )["results"][:top_k]
         }
 
 
@@ -254,8 +254,11 @@ class _FakePipeline:
     ):
         del use_fusion, images, visual_direct
 
+        chat_mode_value = getattr(chat_mode, "value", chat_mode)
+        is_group_chat = chat_mode_value == _ChatMode.GROUP.value
+
         in_attention_focus = False
-        if chat_mode == _ChatMode.GROUP and not is_mentioned and user_id is not None:
+        if is_group_chat and not is_mentioned and user_id is not None:
             user = self.attention_tracker.get_user_attention(
                 user_id=user_id,
                 context_key=context_id,
@@ -287,7 +290,7 @@ class _FakePipeline:
         behavior_type = "ask_question" if ("?" in user_input or "？" in user_input) else "respond_positive"
         intensity = 0.9 if is_mentioned else 0.3
 
-        if chat_mode == _ChatMode.GROUP and user_id is not None:
+        if is_group_chat and user_id is not None:
             respond = self.attention_tracker.should_respond(
                 user_id=user_id,
                 emotion_intensity=intensity,
@@ -299,7 +302,7 @@ class _FakePipeline:
         else:
             respond = True
 
-        if chat_mode == _ChatMode.GROUP and user_id is not None:
+        if is_group_chat and user_id is not None:
             self.attention_tracker.on_message(
                 user_id=user_id,
                 user_name=user_name or str(user_id),
@@ -321,7 +324,7 @@ class _FakePipeline:
                     context_id=context_id,
                 )
             )
-            if chat_mode == _ChatMode.GROUP and user_id is not None:
+            if is_group_chat and user_id is not None:
                 self.attention_tracker.on_reply(user_id, context_key=context_id)
 
         self._mark_processed(context_id, user_id, respond, is_mentioned)
