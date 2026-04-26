@@ -6,8 +6,9 @@ import argparse
 import base64
 import sys
 import urllib.request
+from contextlib import ExitStack
 from pathlib import Path
-from typing import Optional
+from typing import BinaryIO, Optional
 
 project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
@@ -79,6 +80,16 @@ def _resolve_output_paths(
     ]
 
 
+def _open_binary_files(paths: list[str], stack: ExitStack) -> list[BinaryIO]:
+    files: list[BinaryIO] = []
+    for raw_path in paths:
+        path = Path(raw_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Input image does not exist: {path}")
+        files.append(stack.enter_context(path.open("rb")))
+    return files
+
+
 def _validate_gpt_image_2_request(model: str, size: str, background: str) -> None:
     if model != "gpt-image-2":
         return
@@ -147,6 +158,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--background", type=str, default=None, help="background: auto / opaque / transparent.")
     parser.add_argument("--output-format", type=str, default=None, help="output format: png / jpeg / webp.")
     parser.add_argument("--response-format", type=str, default=None, help="response format: b64_json / url.")
+    parser.add_argument("--input-image", action="append", default=[], help="Reference/source image path. Repeat this option to pass multiple images and use image edit mode.")
+    parser.add_argument("--input-fidelity", type=str, default=None, help="Image edit input fidelity: low / high.")
     parser.add_argument("--n", type=int, default=None, help="How many images to generate.")
     parser.add_argument("--output-compression", type=int, default=None, help="Compression level for jpeg/webp outputs.")
     parser.add_argument("--timeout", type=float, default=None, help="Request timeout in seconds.")
@@ -176,6 +189,8 @@ def main() -> int:
     background = args.background or cfg.background
     output_format = args.output_format or cfg.output_format
     response_format = args.response_format or cfg.response_format
+    input_images = list(args.input_image or [])
+    input_fidelity = args.input_fidelity
     image_count = args.n if args.n is not None else cfg.n
     output_compression = args.output_compression if args.output_compression is not None else cfg.output_compression
     timeout = args.timeout if args.timeout is not None else cfg.timeout
@@ -201,7 +216,6 @@ def main() -> int:
         "n": image_count,
         "size": size,
         "quality": quality,
-        "moderation": moderation,
         "background": background,
         "output_format": output_format,
         "response_format": response_format,
@@ -211,8 +225,19 @@ def main() -> int:
     if user:
         request_kwargs["user"] = user
 
-    logger.info(f"Generating image with model={model}, size={size}, base_url={base_url}")
-    response = client.images.generate(**request_kwargs)
+    if input_images:
+        if input_fidelity:
+            request_kwargs["input_fidelity"] = input_fidelity
+        logger.info(
+            f"Editing image with model={model}, size={size}, references={len(input_images)}, base_url={base_url}"
+        )
+        with ExitStack() as stack:
+            request_kwargs["image"] = _open_binary_files(input_images, stack)
+            response = client.images.edit(**request_kwargs)
+    else:
+        request_kwargs["moderation"] = moderation
+        logger.info(f"Generating image with model={model}, size={size}, base_url={base_url}")
+        response = client.images.generate(**request_kwargs)
     items = list(getattr(response, "data", []) or [])
     if not items:
         raise SystemExit("The image API returned no image data.")

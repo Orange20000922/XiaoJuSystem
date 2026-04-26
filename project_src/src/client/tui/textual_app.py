@@ -6,6 +6,9 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+from rich.style import Style
+from rich.table import Table
+from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -88,6 +91,55 @@ class PixelArtPanel(Static):
         await self.mount(fallback, metadata)
 
 
+class MetricTablePanel(Static):
+    """Right-side metric panel rendered as a soft gradient table."""
+
+    _ROW_STYLES: tuple[Style, ...] = (
+        Style(color="#e7dcc2", bgcolor="#1d2217"),
+        Style(color="#d9d9c8", bgcolor="#182019"),
+        Style(color="#cfe0d4", bgcolor="#15221f"),
+        Style(color="#d7d2c4", bgcolor="#1d1d18"),
+    )
+
+    _LABEL_STYLE = Style(color="#aab7a9", bold=True)
+    _VALUE_STYLE = Style(color="#e5e1d2")
+    _STATUS_STYLE = Style(color="#c6d9cc")
+    _TITLE_STYLE = Style(color="#f1deb3", bold=True)
+
+    def __init__(self, title: str, *, panel_id: str, muted: bool = False):
+        classes = "panel compact metric-panel"
+        if muted:
+            classes += " muted"
+        super().__init__("", id=panel_id, classes=classes)
+        self._title = title
+        self.border_title = title
+
+    def update_rows(self, rows: list[tuple[str, str, str]]) -> None:
+        table = Table(
+            box=None,
+            expand=True,
+            show_header=True,
+            show_edge=False,
+            pad_edge=False,
+            padding=(0, 1),
+            collapse_padding=True,
+        )
+        table.add_column("指标", style=self._LABEL_STYLE, ratio=3, no_wrap=True)
+        table.add_column("数值", style=self._VALUE_STYLE, ratio=4)
+        table.add_column("状态", style=self._STATUS_STYLE, ratio=3)
+
+        for index, (label, value, status) in enumerate(rows):
+            row_style = self._ROW_STYLES[index % len(self._ROW_STYLES)]
+            table.add_row(
+                Text(label, style=self._LABEL_STYLE),
+                Text(value or "-", style=self._VALUE_STYLE),
+                Text(status or "-", style=self._STATUS_STYLE),
+                style=row_style,
+            )
+
+        self.update(table)
+
+
 class TextualClientApp(App[None]):
     """Retro-styled Textual frontend for the core engine."""
 
@@ -150,9 +202,9 @@ class TextualClientApp(App[None]):
                     id="chat-input",
                 )
             with Vertical(id="right-column"):
-                yield Static("", id="status-panel", classes="panel compact")
-                yield Static("", id="sensor-panel", classes="panel compact")
-                yield Static("", id="context-panel", classes="panel compact muted")
+                yield MetricTablePanel("系统", panel_id="status-panel")
+                yield MetricTablePanel("传感", panel_id="sensor-panel")
+                yield MetricTablePanel("运行时", panel_id="context-panel", muted=True)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -340,13 +392,13 @@ class TextualClientApp(App[None]):
         self.query_one("#help-panel", Static).update(self._build_help_text())
 
     def _update_status_panel(self) -> None:
-        self.query_one("#status-panel", Static).update(self._build_status_text())
+        self.query_one("#status-panel", MetricTablePanel).update_rows(self._build_status_rows())
 
     def _update_sensor_panel(self) -> None:
-        self.query_one("#sensor-panel", Static).update(self._build_sensor_text())
+        self.query_one("#sensor-panel", MetricTablePanel).update_rows(self._build_sensor_rows())
 
     def _update_context_panel(self) -> None:
-        self.query_one("#context-panel", Static).update(self._build_context_text())
+        self.query_one("#context-panel", MetricTablePanel).update_rows(self._build_context_rows())
 
     def _update_scene_bar(self) -> None:
         status = self.session.get_status()
@@ -376,31 +428,44 @@ class TextualClientApp(App[None]):
         return "\n".join(lines)
 
     def _build_status_text(self) -> str:
+        lines = ["状态"]
+        for label, value, status in self._build_status_rows():
+            tail = f"  {status}" if status and status != "-" else ""
+            lines.append(f"  {label:<8}{value}{tail}")
+        return "\n".join(lines)
+
+    def _build_status_rows(self) -> list[tuple[str, str, str]]:
         status = self.session.get_status()
         state = "忙碌" if self._busy else ("运行中" if getattr(status, "running", False) else "空闲")
-        lines = [
-            "状态",
-            f"  人格      {self.session.persona_name}",
-            f"  模型      {self.session.llm_model or '-'}",
-            f"  上下文    {self.session.context_id}",
-            f"  运行      {state}",
-            f"  工作记忆  {getattr(status, 'working_memory_turns', 0)}",
+        rows = [
+            ("人格", self.session.persona_name, "在线"),
+            ("模型", self.session.llm_model or "-", "主路由"),
+            ("上下文", self.session.context_id, "绑定"),
+            ("运行", state, "处理中" if self._busy else "稳定"),
+            ("工作记忆", str(getattr(status, "working_memory_turns", 0)), "轮"),
         ]
         proactive_state = getattr(status, "proactive_state", None)
         if proactive_state:
-            lines.append(f"  主动状态  {proactive_state}")
+            rows.append(("主动状态", str(proactive_state), "监听"))
         idle_seconds = getattr(status, "idle_seconds", None)
         if idle_seconds is not None:
-            lines.append(f"  空闲时长  {idle_seconds}s")
+            rows.append(("空闲时长", f"{idle_seconds}s", "计时"))
         if getattr(status, "queue_size", None) is not None:
-            lines.append(f"  队列      {status.queue_size}")
-        lines.append(f"  视觉      {'运行中' if self._vision_state.running else '空闲'}")
-        lines.append(f"  上次回复  {self._last_reply_chars} 字")
+            rows.append(("队列", str(status.queue_size), "待处理"))
+        rows.append(("视觉", "运行中" if self._vision_state.running else "空闲", "链路"))
+        rows.append(("上次回复", f"{self._last_reply_chars} 字", "输出"))
         if self._last_error:
-            lines.append(f"  上次错误  {self._last_error}")
-        return "\n".join(lines)
+            rows.append(("上次错误", self._trim_panel_line(self._last_error, width=18), "异常"))
+        return rows
 
     def _build_sensor_text(self) -> str:
+        lines = ["传感"]
+        for label, value, status in self._build_sensor_rows():
+            tail = f"  {status}" if status and status != "-" else ""
+            lines.append(f"  {label:<8}{value}{tail}")
+        return "\n".join(lines)
+
+    def _build_sensor_rows(self) -> list[tuple[str, str, str]]:
         status = self.session.get_status()
         attention = getattr(status, "attention", {}) or {}
         emotion = getattr(status, "emotion_state", {}) or {}
@@ -417,45 +482,47 @@ class TextualClientApp(App[None]):
         valence_text = "-" if valence is None else f"{float(valence):+.2f}"
         arousal_text = "-" if arousal is None else f"{float(arousal):.2f}"
 
-        lines = [
-            "传感",
-            f"  焦点人数  {focused}",
-            f"  上下文    {context_users}",
-            f"  冷却      {cooldown}",
-            f"  上次发送  {reply_age_text}",
-            "",
-            "情绪",
-            f"  心境      {mood}",
-            f"  愉悦度    {valence_text}",
-            f"  唤醒度    {arousal_text}",
-            "",
-            "视觉",
-            f"  状态      {'运行中' if self._vision_state.running else '空闲'}",
-            f"  来源      {self._vision_state.source}",
-            f"  事件数    {self._vision_state.candidate_count}",
-            f"  晋升数    {self._vision_state.promoted_count}",
+        return [
+            ("焦点人数", str(focused), "注意力"),
+            ("上下文用户", str(context_users), "场景"),
+            ("冷却", cooldown, "节流"),
+            ("上次发送", reply_age_text, "时序"),
+            ("心境", mood, "情绪"),
+            ("愉悦度", valence_text, "V"),
+            ("唤醒度", arousal_text, "A"),
+            ("视觉状态", "运行中" if self._vision_state.running else "空闲", "视觉"),
+            ("视觉来源", self._vision_state.source, "输入"),
+            ("事件数", str(self._vision_state.candidate_count), "候选"),
+            ("晋升数", str(self._vision_state.promoted_count), "确认"),
         ]
-        return "\n".join(lines)
 
     def _build_context_text(self) -> str:
+        lines = ["运行时"]
+        for label, value, status in self._build_context_rows():
+            tail = f"  {status}" if status and status != "-" else ""
+            lines.append(f"  {label:<8}{value}{tail}")
+        return "\n".join(lines)
+
+    def _build_context_rows(self) -> list[tuple[str, str, str]]:
         status = self.session.get_status()
         contexts = getattr(status, "contexts", []) or []
         patterns = getattr(status, "patterns", []) or []
 
-        lines = ["运行时"]
-        lines.append("  前端      textual")
-        lines.append(f"  配置      {getattr(status, 'config_source', '') or '-'}")
+        rows = [
+            ("前端", "textual", "UI"),
+            ("配置", getattr(status, "config_source", "") or "-", "来源"),
+        ]
         if contexts:
-            lines.append(f"  绑定      {', '.join(contexts[:3])}")
+            rows.append(("绑定", ", ".join(contexts[:3]), "上下文"))
         if patterns:
-            lines.append(f"  模式      {', '.join(patterns[:3])}")
+            rows.append(("模式", ", ".join(patterns[:3]), "规则"))
         if self.pixel_registry.active_asset_id:
-            lines.append(f"  立绘      {self.pixel_registry.active_asset_id}")
+            rows.append(("立绘", self.pixel_registry.active_asset_id, "资源"))
         else:
-            lines.append("  立绘      无")
-        lines.append(f"  视觉      {'活动' if self._vision_state.running else '待机'}")
-        lines.append(f"  总结      {self._trim_panel_line(self._vision_state.last_summary_text)}")
-        return "\n".join(lines)
+            rows.append(("立绘", "无", "资源"))
+        rows.append(("视觉", "活动" if self._vision_state.running else "待机", "状态"))
+        rows.append(("总结", self._trim_panel_line(self._vision_state.last_summary_text), "窗口"))
+        return rows
 
     def _build_vision_text(self) -> str:
         state = self._vision_state

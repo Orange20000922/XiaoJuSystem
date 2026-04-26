@@ -133,7 +133,7 @@ class TextualClientUiTests(unittest.TestCase):
         self.assertEqual(len(target.chat_calls), 1)
         _, kwargs = target.chat_calls[0]
         self.assertTrue(kwargs["visual_direct"])
-        self.assertEqual(kwargs["metadata"]["event_id"], "visual-1")
+        self.assertEqual(kwargs["event_id"], "visual-1")
 
     def test_vision_runtime_visual_skill_can_auto_start(self):
         target = _FakeTarget()

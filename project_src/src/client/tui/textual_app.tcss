@@ -40,6 +40,10 @@ Footer {
     max-width: 38;
 }
 
+#right-column .panel {
+    margin-bottom: 1;
+}
+
 .panel {
     border: round #4e6257;
     background: #121814;
@@ -50,6 +54,13 @@ Footer {
 
 .compact {
     height: auto;
+}
+
+.metric-panel {
+    min-height: 10;
+    background: #101712;
+    border: round #61786a;
+    padding: 0 1;
 }
 
 .muted {

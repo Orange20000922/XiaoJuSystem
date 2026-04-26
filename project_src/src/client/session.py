@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Sequence
 
 from src.core_engine.api import ChatRequest, ChatResponse, ClearContextResult, DirectRuntime
@@ -26,6 +27,14 @@ class ClientChatSession:
     verbose: bool = True
     default_user_id: Optional[int] = None
     default_user_name: Optional[str] = None
+    _send_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    _state_condition: threading.Condition = field(
+        default_factory=lambda: threading.Condition(threading.Lock()),
+        init=False,
+        repr=False,
+    )
+    _closed: bool = field(default=False, init=False, repr=False)
+    _active_sends: int = field(default=0, init=False, repr=False)
 
     @classmethod
     def from_target(
@@ -67,20 +76,32 @@ class ClientChatSession:
         use_fusion: Optional[bool] = None,
         visual_direct: bool = False,
     ) -> ChatResponse:
-        request = ChatRequest(
-            text=text,
-            context_id=self.context_id,
-            mode=self.mode,
-            user_id=self.default_user_id if user_id is None else user_id,
-            user_name=self.default_user_name if user_name is None else user_name,
-            is_mentioned=is_mentioned,
-            images=list(images or []),
-            metadata=dict(metadata or {}),
-            verbose=self.verbose,
-            use_fusion=use_fusion,
-            visual_direct=visual_direct,
-        )
-        return self.runtime.chat(request)
+        with self._state_condition:
+            if self._closed:
+                raise RuntimeError("ClientChatSession is closed")
+            self._active_sends += 1
+
+        try:
+            with self._send_lock:
+                request = ChatRequest(
+                    text=text,
+                    context_id=self.context_id,
+                    mode=self.mode,
+                    user_id=self.default_user_id if user_id is None else user_id,
+                    user_name=self.default_user_name if user_name is None else user_name,
+                    is_mentioned=is_mentioned,
+                    images=list(images or []),
+                    metadata=dict(metadata or {}),
+                    verbose=self.verbose,
+                    use_fusion=use_fusion,
+                    visual_direct=visual_direct,
+                )
+                return self.runtime.chat(request)
+        finally:
+            with self._state_condition:
+                self._active_sends -= 1
+                if self._active_sends == 0:
+                    self._state_condition.notify_all()
 
     def get_status(self):
         return self.runtime.get_status()
@@ -92,4 +113,13 @@ class ClientChatSession:
         self.runtime.save_conversation(output_path)
 
     def shutdown(self) -> None:
-        self.runtime.shutdown()
+        should_shutdown = False
+        with self._state_condition:
+            if not self._closed:
+                self._closed = True
+                should_shutdown = True
+            while self._active_sends > 0:
+                self._state_condition.wait()
+
+        if should_shutdown:
+            self.runtime.shutdown()

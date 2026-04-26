@@ -61,6 +61,7 @@ class VisionRuntimeController:
             thread_name_prefix="client-vision-reply",
         )
         self._reply_futures: List[Future] = []
+        self._reply_shutdown = False
         self._lock = threading.RLock()
         self._state = VisionRuntimeState()
         self._last_events: List[VisualEvent] = []
@@ -143,8 +144,10 @@ class VisionRuntimeController:
             thread.join(timeout=5.0)
 
     def shutdown(self) -> None:
+        with self._lock:
+            self._reply_shutdown = True
         self.stop()
-        self._reply_executor.shutdown(wait=False, cancel_futures=False)
+        self._reply_executor.shutdown(wait=True, cancel_futures=True)
 
     def _build_pipeline(self) -> VisualPerceptionPipeline:
         target = self.runtime.target
@@ -210,6 +213,8 @@ class VisionRuntimeController:
 
     def _handle_promoted_event(self, event: VisualEvent) -> None:
         with self._lock:
+            if self._reply_shutdown:
+                return
             self._state.promoted_count += 1
             future = self._reply_executor.submit(self._send_visual_direct_reply, event)
             self._reply_futures.append(future)

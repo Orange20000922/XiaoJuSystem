@@ -119,9 +119,43 @@ cp config.json.example config.json
 #   - deepseek
 #   - custom (GLM / OpenAI 兼容)
 
-# 使用测试用CLI交互界面
-python inference_pipeline.py --config your_config.json
+# 使用测试用 CLI 交互界面
+python -m src.client.cli.inference_pipeline --config your_config.json
+```
 
+### 可选：启动 Textual TUI 客户端（测试/实验用）
+
+当前仓库内置了一个基于 `Textual` 的终端客户端，可用于本地调试与功能验证，包括：
+
+- 终端对话界面
+- 右侧状态/传感面板
+- 像素立绘挂载与预览
+- 视觉运行时的测试接入
+
+它目前的定位是 **可选的测试启动方式**，主要服务于开发和联调，不代表后续正式客户端形态。未来项目仍会继续探索更完整的 Client 方案，例如 WebUI、桌面 GUI 或独立客户端仓库。
+
+启动方式：
+
+```bash
+# 安装 Textual 客户端所需依赖
+pip install textual rich pillow
+
+# 从 project_src/ 目录启动 TUI
+python -m src.client.tui.run_textual --config your_config.json
+```
+
+常用操作：
+
+- 直接输入文本与人格对话
+- `/help` 查看命令列表
+- `/vision-start [source]` 启动视觉运行时
+- `/vision-stop` 停止视觉运行时
+- `/vision-status` 查看视觉状态
+- `/sprite <id> <path>` 挂载像素立绘
+- `/sprite-use <id>` 切换当前立绘
+- `/clear-context` 清空当前上下文
+
+如果你只想快速验证核心对话链路，仍推荐优先使用上面的测试 CLI；TUI 更适合在开发阶段观察状态、视觉与界面交互。
 
 ### 可选模块
 
