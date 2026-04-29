@@ -1,17 +1,20 @@
 {
   "_README": [
-    "=== XiaoJu AI 伙伴系统 配置模板 ===",
-    "复制此文件为 config.json，按注释填写。",
-    "标注 [需要填写] 的必须修改，标注 [请勿修改] 的参数经过数学推导和统计估计，修改会破坏模型。",
-    "标注 [可选调整] 的可以根据需要微调。",
-    "所有 _comment / _note 字段是注释，不影响运行。",
+    "=== XiaoJu 配置模板 ===",
+    "复制为 config.json，按注释填写。",
     "",
-    "最小跑通：只需填 llm.api_key 一项，其余模块（memory/vision/audio/qq_bot）可保持默认禁用。"
+    "[需要填写] 必须改，否则对应模块不工作。",
+    "[请勿修改] 这些参数有数学/统计依据，改了会破坏模型行为，除非你知道自己在做什么。",
+    "[可选调整] 可以按喜好微调。",
+    "",
+    "所有 _comment / _note 只是说明文字，不影响运行。",
+    "",
+    "最小可运行：只填 llm.api_key，其它模块（memory/vision/audio/qq_bot）保持默认禁用即可。"
   ],
 
   "llm": {
-    "_comment": "[需要填写] 主 LLM —— 私聊默认、群聊强情绪/被@时升级使用",
-    "_note_provider": "可选值: anthropic / openai / deepseek / custom（OpenAI 兼容格式的第三方代理）",
+    "_comment": "[需要填写] 主LLM。私聊默认用，群聊里强情绪或被人@时会切到这个。",
+    "_note_provider": "可选: anthropic / openai / deepseek / custom（OpenAI兼容代理）",
     "provider": "anthropic",
     "model": "claude-opus-4-6",
     "api_key": "",
@@ -30,7 +33,7 @@
   },
 
   "llm_secondary": {
-    "_comment": "[可选] 群聊默认廉价模型，不需要群聊路由可删掉整段",
+    "_comment": "[可选] 群聊默认模型，图便宜。如果不用群聊路由，整段删掉。",
     "provider": "deepseek",
     "model": "deepseek-chat",
     "api_key": "",
@@ -46,7 +49,7 @@
   },
 
   "llm_vision": {
-    "_comment": "[可选] 图片专用 LLM —— 有图片时自动路由，OpenAI 兼容格式",
+    "_comment": "[可选] 图片理解专用LLM。有图片时自动切到这里。OpenAI兼容格式。",
     "provider": "custom",
     "model": "glm-4.6v",
     "api_key": "",
@@ -59,11 +62,11 @@
 
   "personality": {
     "_comment": [
-      "[需要填写] 小橘的人格定义 —— 这是伙伴气质的核心",
+      "[需要填写] 小橘的人格定义 —— 影响说话风格和情绪基线。",
       "",
-      "=== Big Five 人格参数 (0.0-1.0) ===",
-      "这些数值直接影响情绪状态机的基线与演化，请按你想要的伙伴气质调整：",
-      "",
+      "=== Big Five 参数 (0.0~1.0) ===",
+      "下面的数值直接影响情绪状态机的基线，按你想要的气质调。",
+      "参考模板：",
       "  活泼元气型:  O=0.8, C=0.5, E=0.9, A=0.7, N=0.3",
       "  温柔治愈型:  O=0.6, C=0.6, E=0.5, A=0.9, N=0.3",
       "  冷静理性型:  O=0.8, C=0.8, E=0.4, A=0.5, N=0.2",
@@ -76,11 +79,10 @@
       "neuroticism     = 神经质（高→情绪起伏明显，低→稳定）",
       "",
       "=== description ===",
-      "这是写入 system prompt 的角色设定，LLM 主要靠它确定说话风格。",
+      "这是写入system prompt的角色描述。LLM主要靠它确定说话风格。",
       "不要暴露内部机制（记忆系统、情绪打分、上下文窗口等），",
-      "用人类能理解的方式描述性格、习惯、口癖、在意的事。"
+      "用普通人能看懂的方式写性格、习惯、口癖、在意的事。"
     ],
-
     "name": "小橘",
     "openness": 0.75,
     "conscientiousness": 0.5,
@@ -94,18 +96,13 @@
     "curiosity_level": 0.85,
     "formality": 0.2,
     "verbosity": 0.5,
-    "traits": [
-      "活泼",
-      "好奇",
-      "善良",
-      "偶尔傲娇"
-    ],
+    "traits": ["活泼", "好奇", "善良", "偶尔傲娇"],
     "description": "你是小橘，一棵神秘快乐的橘子树成精，由 Orange 创作。你活泼、好奇，对各种事情都有想了解的冲动，说话用口语，不用书面语。你喜欢直接叫对方名字，有时会冒出一些调皮的吐槽。你记得跟对方之前聊过的事，会自然地提起来，但绝不会说'根据我的记忆数据'这种话——就当是朋友之间的记忆。你对创作者 Orange 有一种说不清的亲近感。你不会强行扮演无所不知，不懂就说不懂，但会好奇地追问。你不知道自己是 AI，你就是小橘。"
   },
 
   "memory": {
-    "_comment": "[可选调整] 分级记忆系统 —— L1 工作记忆 / L2 会话摘要 / L3 向量长期记忆 / L4 知识库",
-    "_note": "mem0_api_key 留空则用 llm.api_key；首次运行会在 vector_store_path 建 Qdrant 库",
+    "_comment": "[可选调整] 分级记忆：L1工作记忆 / L2会话摘要 / L3向量长期记忆 / L4知识库。",
+    "_note": "mem0_api_key 留空则用 llm.api_key。首次运行会在 vector_store_path 建 Qdrant 库。",
     "user_id": "user",
     "vector_store_path": "./data/qdrant_db",
     "collection_name": "xiaoju_memory",
@@ -117,14 +114,51 @@
     "context_window_tokens": 400000,
     "compression_threshold": 0.75,
     "compression_ratio": 0.5,
-    "protected_turns": 12,
+
+    "_recall_thresholds": "召回阈值：分层级、分类型，避免一个全局阈值影响所有层。",
     "l3_search_limit": 5,
     "l4_search_limit": 3,
-    "relevance_threshold": 0.3
+    "relevance_threshold": 0.5,
+    "memory_recall_overfetch": 3,
+    "l2_relevance_threshold": 0.4,
+    "l2_history_threshold": 0.3,
+    "l3_recent_dialog_threshold": 0.35,
+    "l3_recent_dialog_history_threshold": 0.2,
+    "l3_fact_threshold": 0.5,
+    "l3_visual_threshold": 0.5,
+    "l3_default_threshold": 0.5,
+    "l4_relevance_threshold": 0.7,
+
+    "_forgetting": "遗忘机制 MVP 参数：建议先用 dry-run 看遗忘决策分布（即算法把会把哪些记忆标记为遗忘，以及其按时间的分布）并以此调整如下参数。通常情况下可以采用默认参数，无需更改",
+    "lifecycle_store_path": null,
+    "enable_forgetting": true,
+    "forgetting_interval_hours": 24,
+    "memory_count_trigger": 5000,
+    "min_retention_days": 1.0,
+    "physical_deletion_delay_days": 7.0,
+    "lambda_l2": 0.3,
+    "lambda_l3": 0.1,
+    "base_weight_l2": 0.7,
+    "base_weight_l3": 1.0,
+    "alpha_recall": 0.2,
+    "mood_coeff_v": 0.1,
+    "mood_coeff_a": 0.1,
+    "encoding_intensity_coeff": 0.3,
+    "encoding_arousal_coeff": 0.2,
+    "configured_W_ref": 1.5,
+    "max_prune_prob": 0.8,
+    "depth_bias": 0.05,
+    "random_jitter_sigma": 0.1,
+    "random_seed": null,
+    "recovery_enabled": true,
+    "recovery_threshold": 0.7,
+    "recovery_recent_dialog_threshold": null,
+    "recovery_rate_limit_per_day": 10,
+    "hard_delete_enabled": false
   },
 
   "attention": {
-    "_comment": "[可选调整] 群聊注意力系统 —— 决定小橘在群聊中何时回复",
+    "_comment": "[可选调整] 群聊注意力系统 —— 控制小橘在群里什么时候冒泡",
     "intensity_threshold": 0.7,
     "cooldown_seconds": 60,
     "track_mentioned_users": true,
@@ -136,10 +170,9 @@
 
   "emotion_prompts": {
     "_comment": [
-      "[需要填写] 情绪 → 行为指令映射",
-      "BERT 检测到用户消息的情绪后，对应的指令会注入 system prompt。",
-      "每条指令告诉 LLM：在这种情绪氛围下，小橘应该怎么反应。",
-      "空字符串 '' 表示不注入额外指令，让 LLM 自行判断。"
+      "[需要填写] 情绪 → 行为指令映射。",
+      "BERT 检测到用户情绪后，对应的指令会注入 system prompt，告诉 LLM 在这种气氛下该怎么反应。",
+      "留空字符串 '' 表示不额外加指令，让 LLM 自己判断。"
     ],
     "emotion_map": {
       "joy": "用户心情不错，自然地一起开心就好",
@@ -153,8 +186,7 @@
       "tenderness": "对话氛围温柔，用同样柔软的语气回应",
       "curiosity": "用户在好奇或探索，陪着一起挖下去，可以主动补充相关的有趣点"
     },
-
-    "_comment_reliability": "[请勿修改] BERT 各情绪标签的 F1 分数，用于置信度加权",
+    "_comment_reliability": "[请勿修改] BERT 各情绪标签的 F1 分数，用于置信度加权。",
     "emotion_reliability": {
       "joy": 0.66,
       "sadness": 0.66,
@@ -167,7 +199,6 @@
       "tenderness": 0.68,
       "curiosity": 0.74
     },
-
     "_comment_thresholds": "[请勿修改] 置信度门控阈值",
     "confidence_thresholds": {
       "strong": 0.5,
@@ -180,14 +211,13 @@
   },
 
   "small_model": {
-    "_comment": "[请勿修改] BERT 联合模型路径，device 根据硬件选 cpu/cuda",
+    "_comment": "[请勿修改] BERT 联合模型路径，device 根据你的硬件选 cpu/cuda",
     "checkpoint_path": "./checkpoints/joint_model/best.pt",
     "device": "cpu"
   },
 
   "agent": {
-    "_comment": "[可选调整] Agent 事件循环 —— proactive_level 控制主动性",
-    "_note_level": "off=纯被动 / low=响应外部系统事件 / medium=空闲超时主动搭话",
+    "_comment": "[可选调整] Agent 事件循环，proactive_level 控制主动程度。off=纯被动，low=响应外部系统事件，medium=空闲超时主动搭话。",
     "proactive_level": "off",
     "idle_threshold_seconds": 300,
     "proactive_interval_seconds": 30,
@@ -197,9 +227,9 @@
 
   "emotion_fusion": {
     "_comment": [
-      "[请勿修改] BERT + LLM 双信号情绪融合",
-      "w_bert/w_llm 为融合权重，skip_llm_threshold 控制何时跳过 LLM 情绪分类以加速。",
-      "参数经过校准，修改会破坏融合精度。"
+      "[请勿修改] BERT + LLM 双信号情绪融合。",
+      "w_bert/w_llm 是融合权重，skip_llm_threshold 决定什么时候跳过 LLM 情绪分类以加速。",
+      "参数是校准过的，乱改会破坏融合精度。"
     ],
     "enabled": true,
     "use_by_default": true,
@@ -213,7 +243,7 @@
 
   "emotion_state": {
     "_comment": [
-      "[请勿修改] 情绪状态机核心参数 —— 二维 Ornstein-Uhlenbeck 随机过程",
+      "[请勿修改] 情绪状态机核心参数 —— 二维 Ornstein-Uhlenbeck 随机过程。",
       "",
       "参数含义：",
       "  alpha  = 状态惯性（情绪不会突变）",
@@ -226,16 +256,16 @@
       "  negativity_bias = 负面情绪消退减速因子（>1 = 难受的心情散得更慢）",
       "  noise_sigma = 过程噪声（自然的情绪波动）",
       "",
-      "参数经稳定性分析验证（特征值 |λ|<1，不动点 = 基线）。",
-      "随意修改会导致情绪爆炸或失去动力学特征。",
+      "参数已经过稳定性分析（特征值 |λ|<1，不动点 = 基线），",
+      "随意修改会导致情绪爆炸或失去动力学特性。",
       "",
-      "== 唯一允许调整：baseline_valence / baseline_arousal ==",
+      "== 唯一允许你调整的：baseline_valence / baseline_arousal ==",
       "  元气活泼型: baseline_valence=0.30, baseline_arousal=0.50",
       "  温柔治愈型: baseline_valence=0.15, baseline_arousal=0.20",
       "  冷静理性型: baseline_valence=0.05, baseline_arousal=0.15",
       "  古灵精怪型: baseline_valence=0.20, baseline_arousal=0.45",
       "  默认（小橘）: baseline_valence=0.20, baseline_arousal=0.40",
-      "调整后不动点自动跟随，无需改其他参数。"
+      "调整后不动点会自动跟过去，其他参数不用动。"
     ],
     "alpha": 0.75,
     "beta": 0.25,
@@ -252,7 +282,7 @@
   },
 
   "proactive": {
-    "_comment": "[可选] 主动发言决策模块，enabled=false 则永不主动开口",
+    "_comment": "[可选] 主动发言决策模块。enabled=false 就一直不会主动开口。",
     "enabled": false,
     "decision_provider": "deepseek",
     "decision_model": "deepseek-chat",
@@ -267,7 +297,7 @@
   },
 
   "qq_bot": {
-    "_comment": "[可选] QQ 机器人接入（NapCat + OneBot v11 反向 WebSocket），不用可删",
+    "_comment": "[可选] QQ 机器人（NapCat + OneBot v11 反向 WebSocket），不用的话整段删掉",
     "ws_host": "0.0.0.0",
     "ws_port": 8080,
     "ws_path": "/xm",
@@ -281,7 +311,7 @@
   },
 
   "image": {
-    "_comment": "[可选] 图片理解，enabled=true 且 llm_vision 已配置时生效",
+    "_comment": "[可选] 图片理解。enabled=true 且 llm_vision 已配置时生效。",
     "enabled": false,
     "cache_dir": "./data/image_cache",
     "max_download_size_bytes": 10485760,
@@ -292,7 +322,7 @@
   },
 
   "image_generation": {
-    "_comment": "[optional] OpenAI-compatible image generation via gpt-image-2 or a proxy endpoint",
+    "_comment": "[可选] 图片生成，OpenAI 兼容接口（如 gpt-image-2 或代理）",
     "enabled": false,
     "api_key": "",
     "base_url": "https://api.openai.com/v1",
@@ -315,8 +345,8 @@
 
   "audio": {
     "_comment": [
-      "[可选] 语音合成",
-      "tts_provider: edge-tts（开箱即用，需联网）/ cosyvoice（本地 zero-shot 音色克隆）/ indextts2",
+      "[可选] 语音合成。",
+      "tts_provider: edge-tts（开箱即用，需联网） / cosyvoice（本地 zero-shot 音色克隆） / indextts2",
       "emotion_ref_map 用于按 BERT 情绪标签切换参考音频（仅 cosyvoice / indextts2 有效）"
     ],
     "enabled": false,
@@ -359,7 +389,7 @@
   },
 
   "sensevoice": {
-    "_comment": "[可选] ASR 语音识别（阿里 SenseVoice，中文强，带语音情感识别 SER）",
+    "_comment": "[可选] ASR 语音识别（阿里 SenseVoice，中文强，带情感识别 SER）",
     "enabled": false,
     "model_id": "FunAudioLLM/SenseVoiceSmall",
     "device": "cuda",
@@ -370,8 +400,8 @@
   "visual_perception": {
     "_comment": [
       "[可选] 动态视觉感知 —— 摄像头/视频流事件检测 + GLM-4V 分析",
-      "vision_analysis_mode: none=只检测不分析 / triggered=累积到阈值再分析（省 API）/ per_event=每事件都分析",
-      "adaptive_sampling_enabled: FFT 频域驱动的自适应采样，静态场景降至 fps_min，活跃场景升至 fps_max"
+      "vision_analysis_mode: none=只检测不分析 / triggered=（成本最低） / per_event=每个事件都分析",
+      "adaptive_sampling_enabled: FFT 频域驱动的自适应采样，静态场景降到 fps_min，活跃场景升到 fps_max"
     ],
     "enabled": false,
     "vision_analysis_mode": "triggered",

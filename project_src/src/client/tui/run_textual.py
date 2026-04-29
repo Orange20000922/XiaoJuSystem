@@ -1,4 +1,4 @@
-"""Command-line entrypoint for the Textual client."""
+"""Textual 客户端的入口点。提供一个命令行接口来启动基于 Textual 的终端用户界面客户端应用。"""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ def run_textual_client(
     *,
     context_id: str = "tui_default",
 ) -> None:
-    """Run the Textual client against a direct runtime."""
+    """运行 Textual 客户端应用。"""
 
     runtime = DirectRuntime.from_config(config_path)
     app = TextualClientApp(runtime, context_id=context_id)

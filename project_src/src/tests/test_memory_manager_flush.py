@@ -30,7 +30,11 @@ class _FakeMemoryBackend:
     def __init__(self):
         self.records = []
         client = _FakeVectorClient()
-        self.vector_store = types.SimpleNamespace(client=client)
+        self.vector_store = types.SimpleNamespace(
+            client=client,
+            get=self._vector_get,
+            update=self._vector_update,
+        )
         self._telemetry_vector_store = types.SimpleNamespace(client=client)
 
     @classmethod
@@ -39,16 +43,49 @@ class _FakeMemoryBackend:
         cls.instances.append(inst)
         return inst
 
-    def add(self, messages, user_id=None, run_id=None, agent_id=None):
+    def add(
+        self,
+        messages,
+        user_id=None,
+        run_id=None,
+        agent_id=None,
+        metadata=None,
+        infer=True,
+        **kwargs,
+    ):
+        del kwargs
+        record_id = f"mem-{len(self.records) + 1}"
         self.records.append(
             {
+                "id": record_id,
                 "memory": messages[0]["content"],
                 "user_id": user_id,
                 "run_id": run_id,
                 "agent_id": agent_id,
+                "metadata": metadata or {},
                 "score": 1.0,
+                "infer": infer,
             }
         )
+        return {"results": [{"id": record_id, "memory": messages[0]["content"], "event": "ADD"}]}
+
+    def _vector_get(self, vector_id):
+        for record in self.records:
+            if record["id"] == vector_id:
+                payload = dict(record.get("metadata", {}))
+                payload["data"] = record["memory"]
+                return types.SimpleNamespace(id=record["id"], payload=payload)
+        return None
+
+    def _vector_update(self, vector_id, vector=None, payload=None):
+        del vector
+        for record in self.records:
+            if record["id"] == vector_id:
+                payload = dict(payload or {})
+                record["memory"] = payload.get("data", record["memory"])
+                payload.pop("data", None)
+                record["metadata"] = payload
+                return None
 
     def get_all(self, *, filters=None, top_k=20, **kwargs):
         del kwargs
@@ -56,13 +93,30 @@ class _FakeMemoryBackend:
         user_id = filters.get("user_id")
         run_id = filters.get("run_id")
         agent_id = filters.get("agent_id")
+        memory_level = filters.get("memory_level")
+        forgotten = filters.get("forgotten")
         return {
             "results": [
-                {"memory": record["memory"], "score": record["score"]}
+                {
+                    "memory": record["memory"],
+                    "id": record["id"],
+                    "score": record["score"],
+                    "metadata": record.get("metadata", {}),
+                    "run_id": record["run_id"],
+                    "agent_id": record["agent_id"],
+                }
                 for record in self.records
                 if (user_id is None or record["user_id"] == user_id)
                 and (run_id is None or record["run_id"] == run_id)
                 and (agent_id is None or record["agent_id"] == agent_id)
+                and (
+                    memory_level is None
+                    or record.get("metadata", {}).get("memory_level") == memory_level
+                )
+                and (
+                    forgotten is None
+                    or record.get("metadata", {}).get("forgotten") == forgotten
+                )
             ][:top_k]
         }
 
@@ -115,13 +169,13 @@ class MemoryManagerFlushTests(unittest.TestCase):
         _FakeMemoryBackend.instances.clear()
         self.memory_module = importlib.reload(memory_manager_module)
         self.memory_module._shared_mem0 = None
-
     def _make_manager(self, **overrides):
         cfg = MemoryConfig(
             mem0_api_key="test-key",
             context_window_tokens=overrides.pop("context_window_tokens", 128_000),
             compression_threshold=overrides.pop("compression_threshold", 0.75),
             compression_ratio=overrides.pop("compression_ratio", 0.5),
+            lifecycle_store_path=":memory:",
             **overrides,
         )
         return self.memory_module.HierarchicalMemoryManager(
@@ -176,6 +230,196 @@ class MemoryManagerFlushTests(unittest.TestCase):
             if record["memory"].startswith("- fact-from-state")
         ]
         self.assertEqual(len(facts), 1)
+
+    def test_l3_metadata_is_written_and_recall_updates_lifecycle(self):
+        manager = self._make_manager()
+        self._add_turns(manager, 2)
+
+        manager.close_session()
+
+        recent = next(
+            record for record in manager.mem0.records
+            if record["memory"].startswith("[最近对话]")
+        )
+        metadata = recent["metadata"]
+        self.assertEqual(metadata["memory_level"], "L3")
+        self.assertEqual(metadata["memory_type"], "recent_dialog")
+        self.assertFalse(metadata["forgotten"])
+        self.assertEqual(metadata["mem0_id"], recent["id"])
+        self.assertFalse(recent["infer"])
+
+        context = manager.get_system_context("user-1")
+        self.assertIn("[最近对话]", context)
+
+        stored = manager.lifecycle.get(metadata["memory_hash"])
+        self.assertIsNotNone(stored)
+        self.assertEqual(stored["recall_count"], 1)
+        self.assertIsNotNone(stored["last_recalled_at"])
+        self.assertEqual(recent["metadata"]["recall_count"], 1)
+        self.assertIsNotNone(recent["metadata"]["last_recalled_at"])
+
+    def test_forgotten_l3_memory_is_filtered_from_context(self):
+        manager = self._make_manager()
+        self._add_turns(manager, 2)
+        manager.close_session()
+        recent = next(
+            record for record in manager.mem0.records
+            if record["memory"].startswith("[最近对话]")
+        )
+
+        manager.lifecycle.mark_forgotten(
+            [recent["metadata"]["memory_hash"]],
+            now=1_700_000_000.0,
+            delay_days=7,
+        )
+
+        context = manager.get_system_context("user-1")
+        self.assertNotIn("[最近对话]", context)
+
+    def test_l3_threshold_uses_memory_type(self):
+        manager = self._make_manager(
+            relevance_threshold=0.90,
+            l3_recent_dialog_threshold=0.30,
+            l3_fact_threshold=0.50,
+            l3_default_threshold=0.50,
+            recovery_enabled=False,
+        )
+        manager._mem0_add_content(
+            "recent dialog low score memory",
+            user_id=manager.user_id,
+            memory_level="L3",
+            memory_type="recent_dialog",
+        )
+        manager._mem0_add_content(
+            "fact low score memory",
+            user_id=manager.user_id,
+            memory_level="L3",
+            memory_type="fact",
+        )
+        for record in manager.mem0.records:
+            record["score"] = 0.35
+
+        context = manager.get_system_context("ordinary lookup")
+
+        self.assertIn("recent dialog low score memory", context)
+        self.assertNotIn("fact low score memory", context)
+
+    def test_historical_query_lowers_recent_dialog_threshold(self):
+        manager = self._make_manager(
+            l3_recent_dialog_threshold=0.60,
+            l3_recent_dialog_history_threshold=0.20,
+            recovery_enabled=False,
+        )
+        manager._mem0_add_content(
+            "historical recent dialog memory",
+            user_id=manager.user_id,
+            memory_level="L3",
+            memory_type="recent_dialog",
+        )
+        manager.mem0.records[0]["score"] = 0.30
+
+        normal_context = manager.get_system_context("ordinary lookup")
+        historical_context = manager.get_system_context("之前聊过什么")
+
+        self.assertNotIn("historical recent dialog memory", normal_context)
+        self.assertIn("historical recent dialog memory", historical_context)
+
+    def test_forgetting_plan_reports_candidates_without_mutating(self):
+        manager = self._make_manager(
+            min_retention_days=0,
+            configured_W_ref=10.0,
+            base_weight_l3=0.1,
+            lambda_l3=0.0,
+            random_jitter_sigma=0.0,
+            depth_bias=0.0,
+            random_seed=1,
+        )
+        manager._mem0_add_content(
+            "old memory",
+            user_id=manager.user_id,
+            memory_level="L3",
+            memory_type="fact",
+        )
+
+        summary = manager.forgetting_engine.build_forgetting_plan(
+            manager.lifecycle.active_candidates(levels=("L2", "L3")),
+            now=10_000_000_000.0,
+        )
+
+        self.assertEqual(summary["candidate_count"], 1)
+        self.assertEqual(summary["selected_forget_count"], 1)
+        self.assertFalse(manager.lifecycle.all_records()[0]["forgotten"])
+
+    def test_forgetting_maintenance_can_mark_logical_forgetting(self):
+        manager = self._make_manager(
+            enable_forgetting=True,
+            min_retention_days=0,
+            configured_W_ref=10.0,
+            base_weight_l3=0.1,
+            lambda_l3=0.0,
+            random_jitter_sigma=0.0,
+            depth_bias=0.0,
+            random_seed=1,
+        )
+        manager._mem0_add_content(
+            "old memory",
+            user_id=manager.user_id,
+            memory_level="L3",
+            memory_type="fact",
+        )
+
+        summary = manager.run_forgetting_maintenance(
+            now=10_000_000_000.0,
+        )
+
+        self.assertEqual(summary["selected_forget_count"], 1)
+        self.assertEqual(summary["forgotten_count"], 1)
+        self.assertEqual(summary["mem0_synced_count"], 1)
+        stored = manager.lifecycle.active_candidates(levels=("L3",))
+        self.assertEqual(stored, [])
+        all_records = manager.lifecycle.all_records()
+        self.assertTrue(all_records[0]["forgotten"])
+        self.assertIsNotNone(all_records[0]["forgotten_at"])
+        metadata = manager.mem0.records[0]["metadata"]
+        self.assertTrue(metadata["forgotten"])
+        self.assertIsNotNone(metadata["forgotten_at"])
+        self.assertIsNotNone(metadata["deleted_after"])
+
+    def test_recovery_search_reactivates_mem0_metadata(self):
+        manager = self._make_manager(
+            enable_forgetting=True,
+            min_retention_days=0,
+            configured_W_ref=10.0,
+            base_weight_l3=0.1,
+            lambda_l3=0.0,
+            random_jitter_sigma=0.0,
+            depth_bias=0.0,
+            random_seed=1,
+            recovery_threshold=0.5,
+        )
+        manager._mem0_add_content(
+            "old recoverable memory",
+            user_id=manager.user_id,
+            memory_level="L3",
+            memory_type="fact",
+        )
+        manager.run_forgetting_maintenance(
+            now=10_000_000_000.0,
+        )
+
+        self.assertTrue(manager.mem0.records[0]["metadata"]["forgotten"])
+        recovered = manager.recovery_search(
+            "还记得 old recoverable memory 吗",
+            now=10_000_000_001.0,
+        )
+
+        self.assertEqual(len(recovered), 1)
+        metadata = manager.mem0.records[0]["metadata"]
+        self.assertFalse(metadata["forgotten"])
+        self.assertIsNone(metadata["forgotten_at"])
+        self.assertIsNone(metadata["deleted_after"])
+        self.assertEqual(metadata["recall_count"], 1)
+        self.assertIsNotNone(metadata["last_recalled_at"])
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Client-side runtime controller for real-time vision integration."""
+
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from src.vision import (
 
 @dataclass
 class VisionRuntimeState:
-    """Small snapshot for UI rendering."""
+    """TUI视觉管线的状态快照。"""
 
     running: bool = False
     source: str = "-"
@@ -37,7 +37,7 @@ class VisionRuntimeState:
 
 @dataclass
 class VisionCallbacks:
-    """Optional UI hooks used by Textual."""
+    """TUI视觉管线的回调函数类"""
 
     on_event: Optional[Callable[[VisualEvent], None]] = None
     on_summary: Optional[Callable[[VisualWindowSummary], None]] = None
@@ -47,7 +47,7 @@ class VisionCallbacks:
 
 @dataclass
 class VisionRuntimeController:
-    """Owns the real-time vision pipeline for the client UI."""
+    """TUI视觉管线控制器。"""
 
     runtime: DirectRuntime
     session: ClientChatSession

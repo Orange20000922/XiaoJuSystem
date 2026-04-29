@@ -37,7 +37,7 @@ else:
 
 @dataclass(frozen=True)
 class PixelArtAsset:
-    """Registered pixel-art metadata."""
+    """像素立绘资源的元数据定义。每个 asset_id 代表一个可被绑定和渲染的立绘槽位。"""
 
     asset_id: str
     source_path: Path
@@ -48,21 +48,8 @@ class PixelArtAsset:
     backend_hint: str = "textual-image"
 
 
-class PixelArtRenderer(Protocol):
-    """Renderer contract for future image-capable terminal backends."""
-
-    def render_preview(
-        self,
-        asset: PixelArtAsset,
-        *,
-        width: Optional[int] = None,
-        height: Optional[int] = None,
-    ) -> RenderableType:
-        """Return a preview renderable for the current frontend."""
-
-
 class MetadataPixelArtRenderer:
-    """Fallback renderer that exposes metadata until image widgets arrive."""
+    """基于文本描述的像素立绘渲染器。当无法使用更高级的图像渲染方案时，可以使用该渲染器生成包含立绘元数据的文本预览。"""
 
     def render_preview(
         self,
@@ -87,7 +74,7 @@ class MetadataPixelArtRenderer:
 
 
 class AnsiPixelArtRenderer:
-    """Render pixel art as terminal color blocks using Pillow."""
+    """基于 ANSI 转义序列的像素立绘渲染器。使用半块字符（▀ 和 ▄）结合前景色和背景色来模拟像素图像的效果。需要 Pillow 库支持图像处理。"""
 
     def __init__(
         self,
@@ -193,7 +180,9 @@ class AnsiPixelArtRenderer:
 
 
 def build_textual_image_widget(asset: PixelArtAsset) -> Any | None:
-    """Best-effort hook for optional `textual_image` integration."""
+    """尝试构建一个基于 textual-image 库的图像小部件以渲染给定的 PixelArtAsset。如果 textual-image 不可用或构造失败，则返回 None。
+    该函数尝试多种构造方式以兼容不同版本的 textual-image 库，确保在库更新时仍有较高的成功率。
+    """
 
     if not TEXTUAL_IMAGE_AVAILABLE:
         return None
@@ -223,7 +212,7 @@ def build_textual_image_widget(asset: PixelArtAsset) -> Any | None:
 
 
 class PixelArtRegistry:
-    """Registry for pixel-art resources used by the Textual client."""
+    """像素立绘资源注册表。负责管理多个 PixelArtAsset 实例，支持注册、查询和预览功能。客户端应用可以通过该注册表维护当前可用的立绘资源，并根据需要切换和展示不同的立绘。"""
 
     def __init__(self, base_dir: str | Path | None = None):
         resolved_base = Path(base_dir) if base_dir is not None else _DEFAULT_RESOURCE_DIR

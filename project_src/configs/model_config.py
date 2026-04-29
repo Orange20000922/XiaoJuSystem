@@ -100,7 +100,7 @@ class PersonalityConfig:
     # 标签式人格描述
     traits: List[str] = field(default_factory=lambda: ["活泼", "好奇", "善良"])
 
-    # 自由文本人格描述。填写后可直接注入 prompt，
+    # 主人格描述。填写后可直接注入 prompt，
     # 优先级高于数值型人格字段，适合承载更细的行为规范和说话习惯。
     description: str = ""
 
@@ -537,7 +537,48 @@ class MemoryConfig:
     # Mem0 检索参数
     l3_search_limit: int = 5
     l4_search_limit: int = 3
-    relevance_threshold: float = 0.7
+    # 缺少生命周期元数据的旧记忆使用该值作为兼容兜底。
+    relevance_threshold: float = 0.50
+    memory_recall_overfetch: int = 3
+    l2_relevance_threshold: float = 0.40
+    l2_history_threshold: float = 0.30
+    l3_recent_dialog_threshold: float = 0.35
+    l3_recent_dialog_history_threshold: float = 0.20
+    l3_fact_threshold: float = 0.50
+    l3_visual_threshold: float = 0.50
+    l3_default_threshold: float = 0.50
+    l4_relevance_threshold: float = 0.70
+
+    # 遗忘机制 MVP：元数据 / 逻辑遗忘 / 延迟删除配置
+    lifecycle_store_path: Optional[str] = None
+    enable_forgetting: bool = False
+    forgetting_interval_hours: int = 24
+    memory_count_trigger: int = 5000
+    min_retention_days: float = 1.0
+    physical_deletion_delay_days: float = 7.0
+
+    lambda_l2: float = 0.30
+    lambda_l3: float = 0.10
+    base_weight_l2: float = 0.70
+    base_weight_l3: float = 1.00
+    alpha_recall: float = 0.20
+
+    mood_coeff_v: float = 0.10
+    mood_coeff_a: float = 0.10
+    encoding_intensity_coeff: float = 0.30
+    encoding_arousal_coeff: float = 0.20
+
+    configured_W_ref: float = 1.50
+    max_prune_prob: float = 0.80
+    depth_bias: float = 0.05
+    random_jitter_sigma: float = 0.10
+    random_seed: Optional[int] = None
+
+    recovery_enabled: bool = True
+    recovery_threshold: float = 0.70
+    recovery_recent_dialog_threshold: Optional[float] = None
+    recovery_rate_limit_per_day: int = 10
+    hard_delete_enabled: bool = False
 
     @property
     def compression_trigger_tokens(self) -> int:
@@ -830,4 +871,3 @@ class SecurityConfig:
         env_keys = os.environ.get("API_SERVICE_KEYS", "")
         if env_keys:
             self.api_keys = [k.strip() for k in env_keys.split(",") if k.strip()]
-

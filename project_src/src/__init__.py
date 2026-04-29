@@ -1,9 +1,6 @@
 """
 src 模块向后兼容层。
 
-这里不再直接导入整个运行时，以免任意 `import src.xxx`
-都把重依赖和协议适配层一起拉起。旧的顶层导出仍可用，
-但改为按属性访问时懒加载。
 """
 
 from __future__ import annotations

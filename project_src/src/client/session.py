@@ -1,4 +1,4 @@
-"""Client-side session helpers built on top of core_engine APIs."""
+"""ClientChatSession 是一个面向客户端的聊天会话包装器，提供了一个简化的接口来与核心引擎进行交互。它负责管理会话状态、发送消息、获取状态、清理上下文以及保存对话记录等功能。该类设计为线程安全，以支持在多线程环境中使用，并确保在会话关闭时正确处理正在进行的消息发送操作。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from src.core_engine.api import ChatRequest, ChatResponse, ClearContextResult, D
 
 
 def coerce_runtime(runtime_or_target: Any) -> DirectRuntime:
-    """Return a DirectRuntime regardless of the caller's input shape."""
+    """将输入的 runtime_or_target 转换为 DirectRuntime 实例。"""
 
     if isinstance(runtime_or_target, DirectRuntime):
         return runtime_or_target
@@ -19,7 +19,6 @@ def coerce_runtime(runtime_or_target: Any) -> DirectRuntime:
 
 @dataclass
 class ClientChatSession:
-    """Thin client-facing chat session wrapper."""
 
     runtime: DirectRuntime
     context_id: str = "client_default"

@@ -37,7 +37,11 @@ class _FakeMemoryBackend:
     def __init__(self):
         self.records = []
         client = types.SimpleNamespace(close=lambda: None)
-        self.vector_store = types.SimpleNamespace(client=client)
+        self.vector_store = types.SimpleNamespace(
+            client=client,
+            get=self._vector_get,
+            update=self._vector_update,
+        )
         self._telemetry_vector_store = types.SimpleNamespace(client=client)
 
     @classmethod
@@ -46,16 +50,49 @@ class _FakeMemoryBackend:
         cls.instances.append(inst)
         return inst
 
-    def add(self, messages, user_id=None, run_id=None, agent_id=None):
+    def add(
+        self,
+        messages,
+        user_id=None,
+        run_id=None,
+        agent_id=None,
+        metadata=None,
+        infer=True,
+        **kwargs,
+    ):
+        del kwargs
+        record_id = f"mem-{len(self.records) + 1}"
         self.records.append(
             {
+                "id": record_id,
                 "memory": messages[0]["content"],
                 "user_id": user_id,
                 "run_id": run_id,
                 "agent_id": agent_id,
+                "metadata": metadata or {},
                 "score": 1.0,
+                "infer": infer,
             }
         )
+        return {"results": [{"id": record_id, "memory": messages[0]["content"], "event": "ADD"}]}
+
+    def _vector_get(self, vector_id):
+        for record in self.records:
+            if record["id"] == vector_id:
+                payload = dict(record.get("metadata", {}))
+                payload["data"] = record["memory"]
+                return types.SimpleNamespace(id=record["id"], payload=payload)
+        return None
+
+    def _vector_update(self, vector_id, vector=None, payload=None):
+        del vector
+        for record in self.records:
+            if record["id"] == vector_id:
+                payload = dict(payload or {})
+                record["memory"] = payload.get("data", record["memory"])
+                payload.pop("data", None)
+                record["metadata"] = payload
+                return None
 
     def get_all(self, *, filters=None, top_k=20, **kwargs):
         del kwargs
@@ -63,13 +100,30 @@ class _FakeMemoryBackend:
         user_id = filters.get("user_id")
         run_id = filters.get("run_id")
         agent_id = filters.get("agent_id")
+        memory_level = filters.get("memory_level")
+        forgotten = filters.get("forgotten")
         return {
             "results": [
-                {"memory": record["memory"], "score": record["score"]}
+                {
+                    "memory": record["memory"],
+                    "id": record["id"],
+                    "score": record["score"],
+                    "metadata": record.get("metadata", {}),
+                    "run_id": record["run_id"],
+                    "agent_id": record["agent_id"],
+                }
                 for record in self.records
                 if (user_id is None or record["user_id"] == user_id)
                 and (run_id is None or record["run_id"] == run_id)
                 and (agent_id is None or record["agent_id"] == agent_id)
+                and (
+                    memory_level is None
+                    or record.get("metadata", {}).get("memory_level") == memory_level
+                )
+                and (
+                    forgotten is None
+                    or record.get("metadata", {}).get("forgotten") == forgotten
+                )
             ][:top_k]
         }
 
@@ -202,6 +256,7 @@ class _FakePipeline:
             mem0_api_key="test-key",
             context_window_tokens=128_000,
             compression_threshold=0.95,
+            lifecycle_store_path=":memory:",
         )
         self.memory = memory_manager_module.HierarchicalMemoryManager(
             config=memory_cfg,

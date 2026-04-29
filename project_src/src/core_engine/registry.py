@@ -1,4 +1,4 @@
-﻿"""Persona lifecycle registry."""
+﻿"""人格注册管理器，负责管理多个并发人格实例的生命周期和访问。"""
 
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed

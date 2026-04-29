@@ -22,6 +22,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from configs.model_config import MemoryConfig
 from src.logger import logger
+from src.memory.forgetting import (
+    ForgettingEngine,
+    MemoryLifecycleStore,
+    default_lifecycle_path,
+    stable_content_hash,
+    stable_memory_hash,
+    timestamp_to_iso,
+    timestamp_value,
+)
 
 if TYPE_CHECKING:
     from src.core_engine.runtime_types import ConversationTurn
@@ -130,7 +139,7 @@ class HierarchicalMemoryManager:
 
         # Mem0 后端 ── 全进程共享单例，各人格通过 user_id 隔离记忆
         global _shared_mem0
-        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
         if config.mem0_api_key:
             os.environ["OPENAI_API_KEY"] = config.mem0_api_key
         if config.mem0_base_url and config.mem0_llm_provider == "openai":
@@ -194,6 +203,17 @@ class HierarchicalMemoryManager:
                 logger.info(f"Mem0 共享实例复用 (user_id={self.user_id})")
 
         self.mem0 = _shared_mem0
+        lifecycle_path = (
+            Path(config.lifecycle_store_path)
+            if config.lifecycle_store_path
+            else default_lifecycle_path(
+                vector_store_path=config.vector_store_path,
+                collection_name=config.collection_name,
+                user_id=self.user_id,
+            )
+        )
+        self.lifecycle = MemoryLifecycleStore(lifecycle_path)
+        self.forgetting_engine = ForgettingEngine(config)
 
     def _new_session_id(self) -> str:
         return f"session_{time.time_ns()}"
@@ -220,6 +240,150 @@ class HierarchicalMemoryManager:
             max_tokens=max_tokens,
             temperature=temperature,
         )
+
+    def _turns_metadata(self, turns: List["ConversationTurn"]) -> Dict:
+        if not turns:
+            return {}
+        strongest = max(
+            turns,
+            key=lambda turn: float(getattr(turn, "intensity", 0.0) or 0.0),
+        )
+        return {
+            "emotion": getattr(strongest, "emotion", "neutral") or "neutral",
+            "emotion_intensity": float(getattr(strongest, "intensity", 0.0) or 0.0),
+            "behavior": getattr(strongest, "behavior", "") or "",
+            "tone": getattr(strongest, "tone", "") or "",
+            "context_id": getattr(strongest, "context_id", None),
+        }
+
+    def _memory_metadata(
+        self,
+        *,
+        content: str,
+        memory_level: str,
+        memory_type: str,
+        run_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        extra_metadata: Optional[Dict] = None,
+    ) -> Dict:
+        now = time.time()
+        metadata = {
+            "memory_level": memory_level,
+            "memory_type": memory_type,
+            "created_at": timestamp_to_iso(now),
+            "lifecycle_created_at": now,
+            "last_recalled_at": None,
+            "recall_count": 0,
+            "forgotten": False,
+            "forgotten_at": None,
+            "deleted_after": None,
+            "memory_hash": stable_memory_hash(
+                user_id=self.user_id,
+                content=content,
+                memory_level=memory_level,
+                memory_type=memory_type,
+                run_id=run_id,
+                agent_id=agent_id,
+            ),
+            "content_hash": stable_content_hash(self.user_id, content),
+            "user_id": self.user_id,
+            "run_id": run_id,
+            "agent_id": agent_id,
+        }
+        if extra_metadata:
+            metadata.update({k: v for k, v in extra_metadata.items() if v is not None})
+        return metadata
+
+    def _mem0_add_content(
+        self,
+        content: str,
+        *,
+        user_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        memory_level: str,
+        memory_type: str,
+        extra_metadata: Optional[Dict] = None,
+    ):
+        metadata = self._memory_metadata(
+            content=content,
+            memory_level=memory_level,
+            memory_type=memory_type,
+            run_id=run_id,
+            agent_id=agent_id,
+            extra_metadata=extra_metadata,
+        )
+        self.lifecycle.register(metadata)
+        kwargs = {
+            "user_id": user_id,
+            "run_id": run_id,
+            "agent_id": agent_id,
+            "metadata": metadata,
+        }
+        kwargs = {key: value for key, value in kwargs.items() if value is not None}
+        try:
+            result = self.mem0.add(
+                [{"role": "assistant", "content": content}],
+                infer=False,
+                **kwargs,
+            )
+        except TypeError:
+            try:
+                # 旧版mem0兼容回退
+                result = self.mem0.add(
+                    [{"role": "assistant", "content": content}],
+                    **kwargs,
+                )
+            except TypeError:
+                kwargs.pop("metadata", None)
+                result = self.mem0.add(
+                    [{"role": "assistant", "content": content}],
+                    **kwargs,
+                )
+        self._record_mem0_ids(result, metadata)
+        return result
+
+    def _record_mem0_ids(self, add_result, metadata: Dict):
+        results = add_result.get("results", []) if isinstance(add_result, dict) else []
+        if not results:
+            return
+        # 记录第一个记忆 ID 到生命周期存储，供遗忘机制原型使用；同时尝试同步生命周期元数据到 Mem0 以便后续查询。
+        first = results[0]
+        mem0_id = first.get("id") or first.get("memory_id")
+        if mem0_id:
+            metadata["mem0_id"] = str(mem0_id)
+            self.lifecycle.register(metadata)
+            record = self.lifecycle.get(str(metadata.get("memory_hash")))
+            if record:
+                self._sync_lifecycle_record_to_mem0(record)
+
+    def _sync_lifecycle_record_to_mem0(self, record: Dict) -> bool:
+        mem0_id = record.get("mem0_id") or record.get("id")
+        if not mem0_id:
+            return False
+        try:
+            stored = self.mem0.vector_store.get(vector_id=str(mem0_id))
+            if not stored or not getattr(stored, "payload", None):
+                return False
+            payload = dict(stored.payload)
+            data = payload.get("data") or record.get("memory") or ""
+            if not data:
+                return False
+            for key, value in record.items():
+                if key in {"memory", "score"}:
+                    continue
+                if key in {"created_at", "updated_at"}:
+                    ts = timestamp_value(value)
+                    value = timestamp_to_iso(ts) if ts is not None else value
+                payload[key] = value
+            if hasattr(self.mem0.vector_store, "update"):
+                self.mem0.vector_store.update(vector_id=str(mem0_id), payload=payload)
+                return True
+            self.mem0.update(str(mem0_id), data, metadata=payload)
+            return True
+        except Exception as exc:
+            logger.warning(f"同步 lifecycle metadata 到 Mem0 失败: {exc}")
+            return False
 
     # ── L1 操作 ──────────────────────────────────────────────────────────
 
@@ -283,10 +447,13 @@ class HierarchicalMemoryManager:
             except json.JSONDecodeError:
                 content = f"[状态快照] {raw}"
 
-            self.mem0.add(
-                [{"role": "assistant", "content": content}],
+            self._mem0_add_content(
+                content,
                 user_id=self.user_id,
                 run_id=run_id,
+                memory_level="L2",
+                memory_type="state_snapshot",
+                extra_metadata=self._turns_metadata(to_compress),
             )
 
             if not self._compressed_run_ids or self._compressed_run_ids[-1] != run_id:
@@ -339,9 +506,12 @@ class HierarchicalMemoryManager:
                 logger.info(
                     f"close_session: writing {len(recent)} chars to L3 with emotion tags"
                 )
-                self.mem0.add(
-                    [{"role": "assistant", "content": f"[最近对话] {recent}"}],
+                self._mem0_add_content(
+                    f"[最近对话] {recent}",
                     user_id=self.user_id,
+                    memory_level="L3",
+                    memory_type="recent_dialog",
+                    extra_metadata=self._turns_metadata(protected),
                 )
                 self._last_flushed_turn_seq = max(
                     self._last_flushed_turn_seq,
@@ -364,12 +534,22 @@ class HierarchicalMemoryManager:
             all_state_texts = []
             for run_id in run_ids:
                 session_mems = self.mem0.get_all(
-                    filters={"user_id": self.user_id, "run_id": run_id},
+                    filters={
+                        "user_id": self.user_id,
+                        "run_id": run_id,
+                        "memory_level": "L2",
+                        "forgotten": False,
+                    },
                 )
-                if not session_mems or not session_mems.get("results"):
+                session_items = self._filter(
+                    session_mems,
+                    memory_level="L2",
+                    include_forgotten=False,
+                )
+                if not session_items:
                     continue
                 all_state_texts.extend(
-                    r["memory"] for r in session_mems["results"] if "memory" in r
+                    r["memory"] for r in session_items if "memory" in r
                 )
 
             if all_state_texts:
@@ -389,9 +569,11 @@ class HierarchicalMemoryManager:
                     content = raw_facts
 
                 if content.strip():
-                    self.mem0.add(
-                        [{"role": "assistant", "content": content}],
+                    self._mem0_add_content(
+                        content,
                         user_id=self.user_id,  # 无 session_id → L3 持久化
+                        memory_level="L3",
+                        memory_type="fact",
                     )
 
             # L4 用户画像构建（基于本次 session 写入的 L3 强情绪片段）
@@ -411,12 +593,20 @@ class HierarchicalMemoryManager:
 
     # ── L4 显式写入 ───────────────────────────────────────────────────────
 
-    def add_knowledge(self, content: str):
+    def add_knowledge(self, content: str, memory_type: str = "knowledge"):
         """显式写入 L4 知识库（Agent 执行结果、分析结论等）"""
-        self.mem0.add(
-            [{"role": "assistant", "content": content}],
+        if content.startswith("[能力]"):
+            memory_type = "capability"
+        elif content.startswith("[用户画像]"):
+            memory_type = "profile"
+        elif content.startswith("[尾端情绪状态]"):
+            memory_type = "emotion_snapshot"
+        self._mem0_add_content(
+            content,
             agent_id="neuro_agent",
             user_id=self.user_id,
+            memory_level="L4",
+            memory_type=memory_type,
         )
 
     def add_visual_observation(self, content: str, event_id: Optional[str] = None):
@@ -424,23 +614,27 @@ class HierarchicalMemoryManager:
         prefix = "[视觉观察]"
         if event_id:
             prefix = f"{prefix}[{event_id}]"
-        self.add_knowledge(f"{prefix} {content}")
+        self.add_knowledge(f"{prefix} {content}", memory_type="visual")
 
     def add_visual_observation_l3(self, content: str, event_id: Optional[str] = None):
         """将视觉观察写入 L3 用户级记忆（非即时事件）。"""
         prefix = "[视觉观察]"
         if event_id:
             prefix = f"{prefix}[{event_id}]"
-        self.mem0.add(
-            [{"role": "assistant", "content": f"{prefix} {content}"}],
+        self._mem0_add_content(
+            f"{prefix} {content}",
             user_id=self.user_id,
+            memory_level="L3",
+            memory_type="visual",
         )
 
     def add_visual_session_summary_l3(self, content: str):
         """将实时视觉会话的全局总结写入 L3。"""
-        self.mem0.add(
-            [{"role": "assistant", "content": f"[视觉总结] {content}"}],
+        self._mem0_add_content(
+            f"[视觉总结] {content}",
             user_id=self.user_id,
+            memory_level="L3",
+            memory_type="visual_summary",
         )
 
     def add_emotion_snapshot_l4(self, snapshot, source: str = "runtime"):
@@ -469,13 +663,20 @@ class HierarchicalMemoryManager:
         import re
 
         # 拉取所有 L3 记录
-        all_l3 = self.mem0.get_all(filters={"user_id": self.user_id})
-        if not all_l3 or not all_l3.get("results"):
+        all_l3 = self.mem0.get_all(
+            filters={
+                "user_id": self.user_id,
+                "memory_level": "L3",
+                "forgotten": False,
+            }
+        )
+        results = self._filter(all_l3, memory_level="L3", include_forgotten=False)
+        if not results:
             from src.logger import logger
             logger.info("L4 画像构建：L3 无记录，跳过")
             return
 
-        results = all_l3["results"][:max_entries]
+        results = results[:max_entries]
 
         # ── 过滤强情绪片段 ────────────────────────────────────────────────
         strong_entries = []
@@ -578,37 +779,83 @@ class HierarchicalMemoryManager:
             l2_run_ids = tuple(self._compressed_run_ids) or (self.session_id,)
 
         sections = []
+        overfetch = max(1, int(getattr(self.config, "memory_recall_overfetch", 1)))
+        l3_top_k = self.config.l3_search_limit * overfetch
+        l4_top_k = self.config.l4_search_limit * overfetch
+        historical_query = self._should_attempt_recovery(query)
 
         with ThreadPoolExecutor(max_workers=2 + len(l2_run_ids)) as executor:
             l2_futures = [
                 executor.submit(
                     self.mem0.search,
                     query=query,
-                    filters={"user_id": self.user_id, "run_id": run_id},
-                    top_k=self.config.l3_search_limit,
+                    filters={
+                        "user_id": self.user_id,
+                        "run_id": run_id,
+                        "memory_level": "L2",
+                        "forgotten": False,
+                    },
+                    top_k=l3_top_k,
                 )
                 for run_id in l2_run_ids
             ]
             f_l3 = executor.submit(
                 self.mem0.search,
                 query=query,
-                filters={"user_id": self.user_id},
-                top_k=self.config.l3_search_limit,
+                filters={
+                    "user_id": self.user_id,
+                    "memory_level": "L3",
+                    "forgotten": False,
+                },
+                top_k=l3_top_k,
             )
             f_l4 = executor.submit(
                 self.mem0.search,
                 query=query,
-                filters={"user_id": self.user_id, "agent_id": "neuro_agent"},
-                top_k=self.config.l4_search_limit,
+                filters={
+                    "user_id": self.user_id,
+                    "agent_id": "neuro_agent",
+                    "memory_level": "L4",
+                },
+                top_k=l4_top_k,
             )
             l2_results = [future.result() for future in l2_futures]
             l3 = f_l3.result()
             l4 = f_l4.result()
 
-        combined = self._merge(*l2_results, l3)
-        if combined:
+        l2_items: List[Dict] = []
+        for result in l2_results:
+            l2_items.extend(
+                self._filter(
+                    result,
+                    memory_level="L2",
+                    include_forgotten=False,
+                    historical_query=historical_query,
+                )
+            )
+        l3_items = self._filter(
+            l3,
+            memory_level="L3",
+            include_forgotten=False,
+            historical_query=historical_query,
+        )
+        combined_items = self._merge_items(l2_items, l3_items)[
+            :self.config.l3_search_limit
+        ]
+        if self.config.recovery_enabled and (not combined_items or historical_query):
+            recovered = self.recovery_search(
+                query,
+                top_k=max(1, self.config.l3_search_limit - len(combined_items)),
+            )
+            combined_items = self._merge_items(combined_items, recovered)[
+                :self.config.l3_search_limit
+            ]
+        if combined_items:
+            self._mark_recalled(combined_items)
             sections.append(
-                "<history>" + "|".join(combined) + "</history>"
+                "<history>" +
+                "|".join(item["memory"] for item in combined_items) +
+                "</history>"
             )
         elif self._has_l3_records():
             # 语义搜索没命中具体内容，但 L3 确实有历史记录
@@ -617,7 +864,9 @@ class HierarchicalMemoryManager:
                 "不要说'这是第一次对话'，也不要提到记忆系统、数据、调取之类的词。</has_memory>"
             )
 
-        l4_items = self._filter(l4)
+        l4_items = self._filter(l4, memory_level="L4", include_forgotten=True)[
+            :self.config.l4_search_limit
+        ]
         if l4_items:
             sections.append(
                 "<knowledge>" +
@@ -626,6 +875,93 @@ class HierarchicalMemoryManager:
             )
 
         return "\n".join(sections) if sections else ""
+
+    def _should_attempt_recovery(self, query: str) -> bool:
+        if not query:
+            return False
+        recovery_terms = (
+            "还记得",
+            "记得",
+            "之前",
+            "以前",
+            "上次",
+            "刚才",
+            "我们聊过",
+            "说过",
+        )
+        return any(term in query for term in recovery_terms)
+
+    def recovery_search(
+        self,
+        query: str,
+        *,
+        top_k: Optional[int] = None,
+        now: Optional[float] = None,
+    ) -> List[Dict]:
+        """搜索已遗忘的 L2/L3 记忆，并重新激活高相关命中。"""
+        if not self.config.recovery_enabled:
+            return []
+        now = now or time.time()
+        limit = top_k or self.config.l3_search_limit
+        overfetch = max(1, int(getattr(self.config, "memory_recall_overfetch", 1)))
+        search_top_k = limit * overfetch
+        result_sets = []
+        for level in ("L2", "L3"):
+            try:
+                result_sets.append(
+                    self.mem0.search(
+                        query=query,
+                        filters={
+                            "user_id": self.user_id,
+                            "memory_level": level,
+                            "forgotten": True,
+                        },
+                        top_k=search_top_k,
+                    )
+                )
+            except Exception as exc:
+                logger.warning(f"恢复性召回搜索失败 level={level}: {exc}")
+
+        candidates: List[Dict] = []
+        for result in result_sets:
+            candidates.extend(
+                self._filter(
+                    result,
+                    include_forgotten=True,
+                    recovery=True,
+                    historical_query=self._should_attempt_recovery(query),
+                )
+            )
+
+        recoverable = []
+        for item in self._merge_items(candidates):
+            lifecycle = item.get("_lifecycle") or self._item_lifecycle(item)
+            if not lifecycle or not lifecycle.get("forgotten", False):
+                continue
+            deleted_after = lifecycle.get("deleted_after")
+            if deleted_after is not None and float(deleted_after) <= now:
+                continue
+            level = str(lifecycle.get("memory_level") or "").upper()
+            if level not in {"L2", "L3"}:
+                continue
+            recoverable.append(item)
+            if len(recoverable) >= limit:
+                break
+
+        hashes = []
+        for item in recoverable:
+            lifecycle = item.get("_lifecycle") or self._item_lifecycle(item)
+            if lifecycle and lifecycle.get("memory_hash"):
+                hashes.append(str(lifecycle["memory_hash"]))
+
+        for record in self.lifecycle.reactivate(hashes, now=now):
+            self._sync_lifecycle_record_to_mem0(record)
+        for item in recoverable:
+            lifecycle = self._item_lifecycle(item)
+            if lifecycle:
+                item["_lifecycle"] = lifecycle
+            item["_skip_recall_mark"] = True
+        return recoverable
 
     def get_messages_history(self, context_id: Optional[str] = None, max_turns: Optional[int] = None) -> List[Dict]:
         """
@@ -671,12 +1007,54 @@ class HierarchicalMemoryManager:
     def _has_l3_records(self) -> bool:
         """检查 L3（user 级持久记忆）是否有任何记录"""
         try:
-            l3 = self.mem0.get_all(filters={"user_id": self.user_id})
-            return bool(l3 and l3.get("results"))
+            l3 = self.mem0.get_all(
+                filters={
+                    "user_id": self.user_id,
+                    "memory_level": "L3",
+                    "forgotten": False,
+                }
+            )
+            return bool(
+                self._filter(l3, memory_level="L3", include_forgotten=False)
+            )
         except Exception:
             return False
 
-    def _filter(self, search_result) -> List[Dict]:
+    def _item_lifecycle(self, item: Dict) -> Optional[Dict]:
+        metadata = item.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = item.get("_lifecycle")
+        if isinstance(metadata, dict) and metadata.get("memory_hash"):
+            stored = self.lifecycle.get(str(metadata["memory_hash"]))
+            merged = dict(metadata)
+            if stored:
+                merged.update(stored)
+            if item.get("id") and not merged.get("mem0_id"):
+                merged["mem0_id"] = str(item["id"])
+            return merged
+        memory_hash = item.get("memory_hash")
+        if memory_hash:
+            stored = self.lifecycle.get(str(memory_hash))
+            if stored:
+                return stored
+        text = item.get("memory")
+        if isinstance(text, str):
+            lifecycle = self.lifecycle.find_by_content(self.user_id, text)
+            if lifecycle and item.get("id") and not lifecycle.get("mem0_id"):
+                lifecycle["mem0_id"] = str(item["id"])
+            return lifecycle
+        return None
+
+    def _filter(
+        self,
+        search_result,
+        *,
+        memory_level: Optional[str] = None,
+        include_forgotten: bool = False,
+        min_score: Optional[float] = None,
+        historical_query: bool = False,
+        recovery: bool = False,
+    ) -> List[Dict]:
         if isinstance(search_result, dict):
             results = search_result.get("results", [])
         elif isinstance(search_result, list):
@@ -684,20 +1062,196 @@ class HierarchicalMemoryManager:
         else:
             return []
 
-        return [
-            r for r in results
-            if isinstance(r, dict) and r.get("score", 0) >= self.config.relevance_threshold
-        ]
+        filtered = []
+        expected_level = memory_level.upper() if memory_level else None
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            item = dict(result)
+            lifecycle = self._item_lifecycle(item)
+            item_level = expected_level
+            memory_type = None
+            if lifecycle:
+                item["_lifecycle"] = lifecycle
+                item_level = str(lifecycle.get("memory_level") or "").upper()
+                memory_type = str(lifecycle.get("memory_type") or "")
+                if expected_level and item_level and item_level != expected_level:
+                    continue
+                if not include_forgotten and lifecycle.get("forgotten", False):
+                    continue
+            elif expected_level == "L4":
+                # 旧版 L4 记录没有生命周期元数据，但依然支持以 agent_id等特定字段进行过滤
+                pass
+            elif expected_level in {"L2", "L3"}:
+                # 兼容生命周期元数据引入前写入的旧记忆。
+                if item.get("agent_id") == "neuro_agent":
+                    continue
+                if expected_level == "L3" and item.get("run_id") is not None:
+                    continue
+                pass
+            threshold = self._score_threshold_for(
+                memory_level=item_level,
+                memory_type=memory_type,
+                min_score=min_score,
+                historical_query=historical_query,
+                recovery=recovery,
+            )
+            if result.get("score", 0) < threshold:
+                continue
+            filtered.append(item)
+        return filtered
 
-    def _merge(self, *result_sets) -> List[str]:
+    def _score_threshold_for(
+        self,
+        *,
+        memory_level: Optional[str] = None,
+        memory_type: Optional[str] = None,
+        min_score: Optional[float] = None,
+        historical_query: bool = False,
+        recovery: bool = False,
+    ) -> float:
+        if min_score is not None:
+            return float(min_score)
+        level = str(memory_level or "").upper()
+        mtype = str(memory_type or "").lower()
+        if recovery:
+            if mtype == "recent_dialog":
+                recent_threshold = getattr(
+                    self.config,
+                    "recovery_recent_dialog_threshold",
+                    None,
+                )
+                if recent_threshold is not None:
+                    return float(recent_threshold)
+            return float(
+                getattr(
+                    self.config,
+                    "recovery_threshold",
+                    self.config.relevance_threshold,
+                )
+            )
+        if level == "L2":
+            field = "l2_history_threshold" if historical_query else "l2_relevance_threshold"
+            return float(getattr(self.config, field, self.config.relevance_threshold))
+        if level == "L3":
+            if mtype == "recent_dialog":
+                field = (
+                    "l3_recent_dialog_history_threshold"
+                    if historical_query
+                    else "l3_recent_dialog_threshold"
+                )
+                return float(getattr(self.config, field, self.config.relevance_threshold))
+            if mtype == "fact":
+                return float(
+                    getattr(
+                        self.config,
+                        "l3_fact_threshold",
+                        self.config.relevance_threshold,
+                    )
+                )
+            if mtype in {"visual", "visual_summary"}:
+                return float(
+                    getattr(
+                        self.config,
+                        "l3_visual_threshold",
+                        self.config.relevance_threshold,
+                    )
+                )
+            return float(
+                getattr(
+                    self.config,
+                    "l3_default_threshold",
+                    self.config.relevance_threshold,
+                )
+            )
+        if level == "L4":
+            return float(
+                getattr(
+                    self.config,
+                    "l4_relevance_threshold",
+                    self.config.relevance_threshold,
+                )
+            )
+        return float(self.config.relevance_threshold)
+
+    def _merge_items(self, *item_sets: List[Dict]) -> List[Dict]:
         seen, out = set(), []
-        for rs in result_sets:
-            for item in self._filter(rs):
-                text = item["memory"]
+        for items in item_sets:
+            for item in items:
+                text = item.get("memory")
+                if not text:
+                    continue
                 if text not in seen:
                     seen.add(text)
-                    out.append(text)
+                    out.append(item)
         return out
+
+    def _mark_recalled(self, items: List[Dict]):
+        hashes = []
+        for item in items:
+            if item.get("_skip_recall_mark"):
+                continue
+            lifecycle = item.get("_lifecycle") or self._item_lifecycle(item)
+            if not lifecycle:
+                continue
+            level = str(lifecycle.get("memory_level") or "").upper()
+            if level not in {"L2", "L3"}:
+                continue
+            memory_hash = lifecycle.get("memory_hash")
+            if memory_hash:
+                hashes.append(str(memory_hash))
+        if hashes:
+            for record in self.lifecycle.mark_recalled(hashes):
+                self._sync_lifecycle_record_to_mem0(record)
+
+    def run_forgetting_maintenance(
+        self,
+        *,
+        current_valence: float = 0.0,
+        current_arousal: float = 0.0,
+        now: Optional[float] = None,
+    ) -> Dict:
+        """基于生命周期元数据执行遗忘扫描并写入逻辑遗忘标记。
+           MVP 路径暂不实现物理删除。
+        """
+        now = now or time.time()
+        if not self.config.enable_forgetting:
+            return {
+                "enabled": False,
+                "reason": "forgetting_disabled",
+                "candidate_count": 0,
+                "selected_forget_count": 0,
+                "forgotten_count": 0,
+            }
+        records = self.lifecycle.active_candidates(levels=("L2", "L3"))
+        summary = self.forgetting_engine.build_forgetting_plan(
+            records,
+            now=now,
+            current_valence=current_valence,
+            current_arousal=current_arousal,
+        )
+        hashes = [
+            decision["memory_hash"]
+            for decision in summary.get("decisions", [])
+            if decision.get("final_action") == "forget"
+        ]
+        updated_records = self.lifecycle.mark_forgotten(
+            hashes,
+            now=now,
+            delay_days=self.config.physical_deletion_delay_days,
+        )
+        synced = sum(
+            1 for record in updated_records
+            if self._sync_lifecycle_record_to_mem0(record)
+        )
+        summary["forgotten_count"] = len(updated_records)
+        summary["mem0_synced_count"] = synced
+        self.lifecycle.set_last_scan_at(now)
+        summary["enabled"] = True
+        summary["lifecycle_write_failed"] = bool(
+            getattr(self.lifecycle, "write_failed", False)
+        )
+        return summary
 
     @property
     def l1_usage(self) -> str:
